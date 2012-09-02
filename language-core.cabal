@@ -1,0 +1,12 @@
+Name:         core-language
+Version:      0.1
+Description:  Core Language Parser and Pretty Printer
+Author:       Michael Dever
+Maintainer:   mdever@computing.dcu.ie
+Build-Type:   Simple
+Cabal-Version >= 1.14
+
+Library
+  Build-Depends:    base >= 4 && < 5, split >= 0.2, haskell-src-exts >= 1.13.3, pretty >= 1.1.1
+  Exposed-modules:  Language.Core
+  ghc-options:      -Wall
