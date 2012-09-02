@@ -103,6 +103,9 @@ termToExp (Apply t t') = LHE.App (termToExp t) (termToExp t')
 termToExp (Fun f) = LHE.Var (toQName f)
 termToExp (Case t bs) = LHE.Case (termToExp t) (map branchToAlt bs)
 termToExp (Let x t u) = LHE.Let (LHE.BDecls [LHE.PatBind (LHE.SrcLoc "" 0 0) (LHE.PVar (LHE.Ident x)) Nothing (LHE.UnGuardedRhs (termToExp t)) (LHE.BDecls [])]) (termToExp u)
+termToExp (Unfold {}) = LHE.Var (toQName "")
+termToExp (Subst {}) = LHE.Var (toQName "")
+termToExp (Label {}) = LHE.Var (toQName "")
 
 branchToAlt :: Branch -> LHE.Alt
 branchToAlt (Branch c xs t) = LHE.Alt (LHE.SrcLoc "" 0 0) (LHE.PApp (LHE.UnQual (LHE.Ident c)) (map (\v -> LHE.PVar (LHE.Ident v)) xs)) (LHE.UnGuardedAlt (termToExp t)) (LHE.BDecls [])
