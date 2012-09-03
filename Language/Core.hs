@@ -1,7 +1,9 @@
 module Language.Core(
-		Term(Free, Lambda, Con, Apply, Fun, Case, Let, Letrec, Unfold, Label, Subst),
+		-- * Types
+		Term(Free, Lambda, Con, Apply, Fun, Case, Let, Letrec, Unfold, Label, Subst), 
 		Branch(Branch),
 		Program(Program),
+		-- * Functions
 		parseFile,
 		parseToCore
 	) where

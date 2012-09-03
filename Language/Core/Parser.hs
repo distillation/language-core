@@ -9,12 +9,20 @@ import Data.Foldable (find)
 import qualified Language.Haskell.Exts as LHE
 import Debug.Trace
 
+{-|
+  'parseFile' reads in a file, and converts it to a 'Program'.
+-}
+
 parseFile :: FilePath -> IO (Program)
 parseFile f = do
 	fileContents <- readFile f
 	case (LHE.parseModule fileContents) of
 		LHE.ParseFailed srcLoc errorMessage -> error errorMessage
 		LHE.ParseOk parsedModule -> return (parseToCore parsedModule)
+
+{-|
+  'parseToCore' accepts a "Module" and converts it to a "Program"
+-}
 
 parseToCore :: LHE.Module -> Program
 parseToCore (LHE.Module _ name pragmas warnings exports impDecls decls) =
@@ -38,6 +46,10 @@ isFuncDecl (LHE.PatBind {}) = True
 isFuncDecl (LHE.FunBind {}) = True
 isFuncDecl _ = False
 
+{-
+  Fix (local) function calls from Free to Var.
+-}
+
 fixTerms :: [String] -> Term -> Term
 fixTerms names e@(Free v)
  | v `elem` names = Fun v
@@ -47,6 +59,10 @@ fixTerms names (Lambda v e) = Lambda v $ fixTerms names e
 fixTerms names (Apply e e') = Apply (fixTerms names e) (fixTerms names e')
 fixTerms names (Case e bs) = Case (fixTerms names e) (map (\(Branch c es e) -> (Branch c es $ fixTerms names e)) bs)
 fixTerms names e = e
+
+{-
+  Patbind and FunBind are the only declarations we're interested in. Possible no harm in future to collect other decls and print them with output regardless.
+-}
 
 parseDecl :: LHE.Decl -> (String, Term)
 parseDecl (LHE.PatBind _ (LHE.PVar name) _ e (LHE.BDecls [])) =
@@ -61,6 +77,10 @@ parseDecl (LHE.FunBind [LHE.Match _ name pats _ e (LHE.BDecls [])]) =
     in (fName, fExpr)
 parseDecl d = error $ show d
 
+{-
+  This is where the body of functions lies. Limited to unguarded at present.
+-}
+
 parseRhs :: LHE.Rhs -> Term
 parseRhs (LHE.UnGuardedRhs e) = parseExp e
 
@@ -68,29 +88,33 @@ parseName :: LHE.Name -> String
 parseName (LHE.Ident s) = s
 parseName (LHE.Symbol s) = s
 
+{-
+  Parses Expressions to Terms.
+-}
+
 parseExp :: LHE.Exp -> Term
 parseExp (LHE.Var n) = Free $ parseQName n
 parseExp (LHE.Con c) = Con (parseQName c) []
 parseExp (LHE.InfixApp e q e')
- | parseQOp q == "Cons" = Con "Cons" [parseExp e, parseExp e']
- | parseQOp q == "Nil" = Con "Nil" []
+ | parseQOp q == "Cons" = Con "Cons" [parseExp e, parseExp e'] -- Check for list
+ | parseQOp q == "Nil" = Con "Nil" [] -- Check for empty list
  | otherwise = Apply (Apply (Free $ parseQOp q)  (parseExp e)) (parseExp e')
 parseExp app@(LHE.App e e')
  | isConApp app = Con (getConsName app) (getConsArgs app)
  | otherwise = Apply (parseExp e) (parseExp e')
-parseExp (LHE.NegApp e) = Apply (Free "negate") (parseExp e)
+parseExp (LHE.NegApp e) = Apply (Free "negate") (parseExp e) -- Not 100% sure if correct
 parseExp (LHE.Lambda _ pats e) =
-    let lambdaVars = map (\(LHE.PVar v) -> parseName v) pats
+    let lambdaVars = map (\(LHE.PVar v) -> parseName v) pats -- Enforcing PVars (need to work on other types of pattern)
         lambdaBody = parseExp e
 	in foldr (\v e -> Lambda v e) lambdaBody lambdaVars
 parseExp (LHE.Let (LHE.BDecls bindings) e) =
-    let letBindings = map parseDecl bindings
+    let letBindings = map parseDecl bindings --Need to parse bindings (BDecls), and abstract for let body. Could just be converted to Letrec?
         letBody = parseExp e
 	in foldl (\e (f', e') -> Apply (Lambda f' e) e') letBody letBindings
-parseExp (LHE.If c t e) = Case (parseExp c) [Branch "True" [] (parseExp t), Branch "False" [] (parseExp e)]
+parseExp (LHE.If c t e) = Case (parseExp c) [Branch "True" [] (parseExp t), Branch "False" [] (parseExp e)] -- If to case, simple enough.
 parseExp (LHE.Case e alts) = Case (parseExp e) (parseAlts alts)
-parseExp (LHE.List []) = Con "Nil" []
-parseExp (LHE.List es) = list2con $ map parseExp es
+parseExp (LHE.List []) = Con "Nil" [] -- Empty list
+parseExp (LHE.List es) = list2con $ map parseExp es -- Convert to list
 parseExp (LHE.Paren e) = parseExp e
 parseExp e = error $ "Unsupported expression type: " ++ show e
 
@@ -107,12 +131,17 @@ parseAlt (LHE.Alt _ pat alt _) =
 parseGuardedAlt :: LHE.GuardedAlts -> Term
 parseGuardedAlt (LHE.UnGuardedAlt e) = parseExp e
 
+{-
+  Parses case patterns into case variables. Fairly limited set.
+-}
+
 parseCasePat :: LHE.Pat -> (String, [String])
 parseCasePat (LHE.PApp c es) = (parseQName c, map (\(LHE.PVar v) -> parseName v) es)
 parseCasePat (LHE.PParen p) = parseCasePat p
 parseCasePat (LHE.PInfixApp (LHE.PVar e) c (LHE.PVar e')) = (parseQName c, [parseName e, parseName e'])
 parseCasePat (LHE.PList []) = ("Nil", [])
 
+-- Inverse is toQName in Term.hs
 parseQName :: LHE.QName -> String
 parseQName (LHE.Qual mName name) = (parseModuleName mName) ++ "." ++ (parseName name)
 parseQName (LHE.UnQual name) = parseName name
