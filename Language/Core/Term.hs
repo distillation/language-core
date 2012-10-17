@@ -2,7 +2,7 @@
 
 module Language.Core.Term(
     -- * Types
-		Term(Free, Lambda, Con, Apply, Fun, Case, Let, Letrec, Unfold, Label, Subst),
+		Term(Free, Lambda, Con, Apply, Fun, Case, Let, Letrec, Unfold, Label, Subst, ConElim),
 		Branch(Branch),
 		Program(Program),
 	) where
@@ -23,6 +23,7 @@ data Term = Free String -- ^ Free variable
           | Unfold String Term -- ^ Unfolding
           | Label String Term -- ^ Label
           | Subst Term Term -- ^ Substitution
+		  | ConElim Term Term
 
 data Branch = Branch String [String] Term -- ^ Standard case constructor branch (case ... of String [String] -> Term)
 
@@ -50,6 +51,7 @@ eqTerm t            (Unfold f t') fs
  | f `elem` fs = False
  | otherwise = eqTerm t t' (f:fs)
 eqTerm t            (Subst _ u) fs    = eqTerm t u fs
+eqTerm t            (ConElim t' u) fs = eqTerm t u fs
 eqTerm _ _ _                          = False
 
 instance Show Term where
@@ -96,6 +98,7 @@ rename s (Let v t u) =
 rename s (Letrec f t u) = Letrec f (rename s t) (rename s u)
 rename s (Unfold f t) = Unfold f (rename s t)
 rename s (Subst t u) = Subst (rename s t) (rename s u)
+rename s (ConElim t u) = ConElim (rename s t) (rename s u)
 
 renamevar :: [String] -> String -> String
 renamevar xs x 
@@ -123,6 +126,7 @@ termToExp (Let x t u) = LHE.Let (LHE.BDecls [LHE.PatBind (LHE.SrcLoc "" 0 0) (LH
 termToExp (Unfold {}) = LHE.Var (toQName "")
 termToExp (Subst {}) = LHE.Var (toQName "")
 termToExp (Label {}) = LHE.Var (toQName "")
+termToExp (ConElim t u) = termToExp u
 
 {-|
   'branchToAlt' takes a 'Branch' and converts it back to an "LHE.Alt" for pretty printing.
@@ -142,3 +146,6 @@ toQName v
  -- '| v == "Nil" = LHE.Special LHE.ListCon
  -- '| v == "Cons" = LHE.Special LHE.Cons
  | otherwise = LHE.UnQual (LHE.Ident v)
+
+pvars :: Branch -> [String]
+pvars (Branch c xs t) = xs

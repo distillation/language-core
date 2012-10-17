@@ -1,6 +1,6 @@
 module Language.Core(
 		-- * Types
-		Term(Free, Lambda, Con, Apply, Fun, Case, Let, Letrec, Unfold, Label, Subst), 
+		Term(Free, Lambda, Con, Apply, Fun, Case, Let, Letrec, Unfold, Label, Subst, ConElim), 
 		Branch(Branch),
 		Program(Program),
 		-- * Functions
