@@ -29,13 +29,17 @@ instance Show Program where
     
 instance Show Term where
     show t = prettyPrint (rebuildExp t)
-    
+
+rebuildModule :: Program -> HsModule    
 rebuildModule (Program main funcs src mn es is) = HsModule src mn es is (rebuildDecls (("main",main):funcs))
 
+rebuildDecls :: [Function] -> [HsDecl]
 rebuildDecls = map rebuildDecl
 
+rebuildDecl :: Function -> HsDecl
 rebuildDecl (name, body) = HsFunBind [HsMatch (SrcLoc "" 0 0) (HsIdent name) [] (HsUnGuardedRhs (rebuildExp body)) []]
 
+rebuildExp :: Term -> HsExp
 rebuildExp (Var v) = HsVar (UnQual (HsIdent v))
 rebuildExp (Lam v e) = HsLambda (SrcLoc "" 0 0) [HsPVar (HsIdent v)] (rebuildExp e)
 rebuildExp (Let v e e') = HsApp (HsLambda (SrcLoc "" 0 0) [HsPVar (HsIdent v)] (rebuildExp e')) (rebuildExp e)
@@ -51,17 +55,23 @@ rebuildExp (Con c es) =
 rebuildExp (App e e') = HsApp (rebuildExp e) (rebuildExp e')
 rebuildExp (Case e bs) = HsCase (rebuildExp e) (rebuildAlts bs)
 
+rebuildAlts :: [Branch] -> [HsAlt]
 rebuildAlts = map rebuildAlt
 
+rebuildAlt :: Branch -> HsAlt
 rebuildAlt (Branch c args e) = HsAlt (SrcLoc "" 0 0) (HsPApp (UnQual (HsIdent c)) (map (\v -> HsPVar (HsIdent v)) args)) (HsUnGuardedAlt (rebuildExp e)) []
 
+rebuildCon :: [Term] -> HsExp
 rebuildCon ((Con "Nil" []):[]) = HsCon (Special HsListCon)
 rebuildCon (e:[]) = rebuildExp e
 rebuildCon (e:es) = HsParen (HsInfixApp (rebuildExp e) (HsQConOp (Special HsCons)) (rebuildCon es))
+rebuildCon [] = error "Rebuilding empty list."
 
+isConApp :: Term -> Bool
 isConApp (Con "Cons" es) = isConApp' (last es)
-
-isConApp' (Con "Cons" es) = isConApp' (last es)
-isConApp' (Con "Nil" []) = True
-isConApp' (Var _) = True
-isConApp' _ = False
+ where
+     isConApp' (Con "Cons" es) = isConApp' (last es)
+     isConApp' (Con "Nil" []) = True
+     isConApp' (Var _) = True
+     isConApp' _ = False
+isConApp _ = False
