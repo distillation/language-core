@@ -7,7 +7,7 @@ module Language.Core.Parser(
 import Language.Haskell.Syntax
 import Language.Haskell.Parser
 import Language.Core.Syntax
-import Data.List(find)
+import Data.List(find, delete)
 
 parseFile :: FilePath -> IO Program
 parseFile file = do
@@ -26,7 +26,7 @@ parseHsModule (HsModule src mn es is ds) =
         main = case find (\f -> fst f == "main") funcs of
             Nothing -> error "No main function defined."
             Just f -> snd f
-    in Program main funcs src mn es is
+    in Program (Where main (delete ("main", main) funcs)) src mn es is
  
 parseHsDecls :: [HsDecl] -> [Function]   
 parseHsDecls ds = map parseHsDecl (filter hsDeclIsFunc ds)
@@ -36,7 +36,6 @@ hsDeclIsFunc (HsFunBind{}) = True
 hsDeclIsFunc (HsPatBind{}) = True
 hsDeclIsFunc _ = False
 
--- No local definitions allowed.
 -- No multiple function definitions allowed
 parseHsDecl :: HsDecl -> Function
 parseHsDecl (HsFunBind [HsMatch _ name pats rhs []]) =
@@ -44,12 +43,25 @@ parseHsDecl (HsFunBind [HsMatch _ name pats rhs []]) =
         functionName = parseHsName name
         args = map parseHsPatToVar pats
         body = parseHsRhs rhs
-    in (functionName, foldr (\v e -> Lam v e) body args)
+    in (functionName, foldr (\v e -> Lambda v e) body args)
+parseHsDecl (HsFunBind [HsMatch _ name pats rhs decls]) =
+    let
+        functionName = parseHsName name
+        args = map parseHsPatToVar pats
+        body = parseHsRhs rhs
+        locals = parseHsDecls decls
+    in (functionName, Where (foldr (\v e -> Lambda v (abstract 0 v e)) body args) locals)
 parseHsDecl (HsPatBind _ name rhs []) =
     let
         functionName = parseHsPatToVar name
         body = parseHsRhs rhs
-    in (functionName, body)
+    in (functionName, body)    
+parseHsDecl (HsPatBind _ name rhs decls) =
+    let
+        functionName = parseHsPatToVar name
+        body = parseHsRhs rhs
+        locals = parseHsDecls decls
+    in (functionName, Where body locals)
 parseHsDecl d = error $ "Attempting to parse invalid decls as function: " ++ show d
     
 -- Only allow variable names as function bound arguments or lambda variables
@@ -68,16 +80,16 @@ parseSpecialCon (HsCons) = "Cons"
 parseSpecialCon c = error $ "Unexpected special constructor: " ++ show c
 
 parseHsExp :: HsExp -> Term
-parseHsExp (HsVar qn) = Var (parseHsQName qn)
+parseHsExp (HsVar qn) = Free (parseHsQName qn)
 parseHsExp (HsCon (Special s)) = Con (parseSpecialCon s) []
 parseHsExp (HsCon qn) = Con (parseHsQName qn) []
 parseHsExp (HsInfixApp e o e')
  | parseHsQOp o == "Nil" = Con "Nil" []
  | parseHsQOp o == "Cons" = Con "Cons" [parseHsExp e, parseHsExp e']
- | otherwise = App (App (Var (parseHsQOp o)) (parseHsExp e)) (parseHsExp e')
+ | otherwise = Apply (Apply (Free (parseHsQOp o)) (parseHsExp e)) (parseHsExp e')
 parseHsExp app@(HsApp e e')
  | isConApp app = Con (parseHsCon e) (parseHsConArgs e ++ [parseHsExp e'])
- | otherwise = App (parseHsExp e) (parseHsExp e')
+ | otherwise = Apply (parseHsExp e) (parseHsExp e')
  where
      isConApp (HsApp (HsCon _) _) = True
      isConApp (HsApp e _) = isConApp e
@@ -101,7 +113,7 @@ parseHsExp (HsLambda _ pats e) =
     let
         lamVars = map parseHsPatToVar pats
         body = parseHsExp e
-    in foldr (\v e -> Lam v e) body lamVars
+    in foldr (\v e -> Lambda v (abstract 0 v e)) body lamVars
 parseHsExp (HsCase e alts) = Case (parseHsExp e) (parseHsAlts alts)
 parseHsExp (HsList es) = parseHsList es
 parseHsExp (HsParen e) = parseHsExp e
@@ -128,7 +140,7 @@ parseHsAlt (HsAlt _ (HsPApp qn args) alt []) =
         cons = parseHsQName qn
         consArgs = map parseHsPatToVar args
         body = parseHsGuardedAlts alt
-    in Branch cons consArgs body
+    in Branch cons consArgs (foldl (\e v -> abstract 0 v e) body consArgs)
 parseHsAlt a = error $ "Unexpected case pattern: " ++ show a
     
 -- Only allow unguarded alts

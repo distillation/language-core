@@ -1,11 +1,19 @@
 module Language.Core(
     Program(Program),
     Function,
-    Term(Var, Lam, Let, Func, Con, App, Case),
+    Term(Free, Lambda, Let, Fun, Con, Apply, Case, Bound, Where),
     Branch(Branch),
     parseFile,
     parseString,
-    parseHsExp
+    parseHsExp,
+    free,
+    bound,
+    funs,
+    abstract,
+    subst,
+    shift,
+    rename,
+    match
 ) where
 
 import Language.Core.Parser
