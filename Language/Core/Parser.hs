@@ -117,6 +117,7 @@ parseHsExp (HsLambda _ pats e) =
 parseHsExp (HsCase e alts) = Case (parseHsExp e) (parseHsAlts alts)
 parseHsExp (HsList es) = parseHsList es
 parseHsExp (HsParen e) = parseHsExp e
+parseHsExp (HsIf c t e) = Case (parseHsExp c) [Branch "True" [] (parseHsExp t), Branch "False" [] (parseHsExp e)]
 parseHsExp (HsLet bs e) =
     let bindings = parseHsDecls bs
         body = parseHsExp e
