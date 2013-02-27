@@ -73,8 +73,8 @@ rebuildExp (Let v e e') =
     let v' = rename (free e') v
     in HsLet [HsFunBind [HsMatch (SrcLoc "" 0 0) (HsIdent v') [] (HsUnGuardedRhs (rebuildExp e)) []]] (rebuildExp (subst 0 (Free v') e'))
 rebuildExp (Fun v) = HsVar (UnQual (HsIdent v))
-rebuildExp (Con "Nil" []) = HsCon (Special HsListCon)
-rebuildExp c@(Con "Cons" es)
+rebuildExp (Con "NilTransformer" []) = HsCon (Special HsListCon)
+rebuildExp c@(Con "ConsTransformer" es)
  | isConApp c = rebuildCon es
 rebuildExp (Con c es) = 
     let
@@ -111,16 +111,16 @@ rebuildAlt (Branch c args e) =
     in HsAlt (SrcLoc "" 0 0) (HsPApp (UnQual (HsIdent c)) (map (\v -> HsPVar (HsIdent v)) args')) (HsUnGuardedAlt (rebuildExp e')) []
 
 rebuildCon :: [Term] -> HsExp
-rebuildCon ((Con "Nil" []):[]) = HsCon (Special HsListCon)
+rebuildCon ((Con "NilTransformer" []):[]) = HsCon (Special HsListCon)
 rebuildCon (e:[]) = rebuildExp e
 rebuildCon (e:es) = HsParen (HsInfixApp (rebuildExp e) (HsQConOp (Special HsCons)) (rebuildCon es))
 rebuildCon [] = error "Rebuilding empty list."
 
 isConApp :: Term -> Bool
-isConApp (Con "Cons" es) = isConApp' (last es)
+isConApp (Con "ConsTransformer" es) = isConApp' (last es)
  where
-     isConApp' (Con "Cons" es) = isConApp' (last es)
-     isConApp' (Con "Nil" []) = True
+     isConApp' (Con "ConsTransformer" es) = isConApp' (last es)
+     isConApp' (Con "NilTransformer" []) = True
      isConApp' (Free _) = True
      isConApp' _ = False
 isConApp _ = False

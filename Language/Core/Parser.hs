@@ -38,25 +38,25 @@ hsDeclIsFunc _ = False
 
 -- No multiple function definitions allowed
 parseHsDecl :: HsDecl -> Function
-parseHsDecl (HsFunBind [HsMatch _ name pats rhs []]) =
+parseHsDecl (HsFunBind [HsMatch _ name pats rhs []]) = -- No local definitions
     let
         functionName = parseHsName name
         args = map parseHsPatToVar pats
         body = parseHsRhs rhs
     in (functionName, foldr (\v e -> Lambda v e) body args)
-parseHsDecl (HsFunBind [HsMatch _ name pats rhs decls]) =
+parseHsDecl (HsFunBind [HsMatch _ name pats rhs decls]) = -- Local definitions
     let
         functionName = parseHsName name
         args = map parseHsPatToVar pats
         body = parseHsRhs rhs
         locals = parseHsDecls decls
     in (functionName, Where (foldr (\v e -> Lambda v (abstract 0 v e)) body args) locals)
-parseHsDecl (HsPatBind _ name rhs []) =
+parseHsDecl (HsPatBind _ name rhs []) = -- No local definitions
     let
         functionName = parseHsPatToVar name
         body = parseHsRhs rhs
     in (functionName, body)    
-parseHsDecl (HsPatBind _ name rhs decls) =
+parseHsDecl (HsPatBind _ name rhs decls) = -- Local definitions
     let
         functionName = parseHsPatToVar name
         body = parseHsRhs rhs
@@ -75,8 +75,8 @@ parseHsRhs (HsUnGuardedRhs e) = parseHsExp e
 parseHsRhs rhs = error $ "Unexpected righthandside: " ++ show rhs
 
 parseSpecialCon :: HsSpecialCon -> String
-parseSpecialCon (HsListCon) = "Nil"
-parseSpecialCon (HsCons) = "Cons"
+parseSpecialCon (HsListCon) = "NilTransformer"
+parseSpecialCon (HsCons) = "ConsTransformer"
 parseSpecialCon c = error $ "Unexpected special constructor: " ++ show c
 
 parseHsExp :: HsExp -> Term
@@ -84,9 +84,20 @@ parseHsExp (HsVar qn) = Free (parseHsQName qn)
 parseHsExp (HsCon (Special s)) = Con (parseSpecialCon s) []
 parseHsExp (HsCon qn) = Con (parseHsQName qn) []
 parseHsExp (HsInfixApp e o e')
- | parseHsQOp o == "Nil" = Con "Nil" []
- | parseHsQOp o == "Cons" = Con "Cons" [parseHsExp e, parseHsExp e']
+ | parseHsQOp o == "NilTransformer" = Con "NilTransformer" []
+ | parseHsQOp o == "ConsTransformer" = 
+     let es = gatherInfixConsArgs e ++ [parseHsExp e']
+     in buildCon es
  | otherwise = Apply (Apply (Free (parseHsQOp o)) (parseHsExp e)) (parseHsExp e')
+ where
+     gatherInfixConsArgs f@(HsInfixApp e o e')
+      | parseHsQOp o == "NilTransformer" = [Con "NilTransformer" []]
+      | parseHsQOp o == "ConsTransformer" = gatherInfixConsArgs e ++ [parseHsExp e']
+      | otherwise = [parseHsExp f]
+     gatherInfixConsArgs e = [parseHsExp e]
+         
+     buildCon (e:e':[]) = Con "ConsTransformer" [e, e']
+     buildCon (e:es) = Con "ConsTransformer" [e, buildCon es]
 parseHsExp app@(HsApp e e')
  | isConApp app = Con (parseHsCon e) (parseHsConArgs e ++ [parseHsExp e'])
  | otherwise = Apply (parseHsExp e) (parseHsExp e')
@@ -101,8 +112,8 @@ parseHsExp app@(HsApp e e')
      parseHsCon e = error $ "Parsing unexpected expression as constructor: " ++ show e
      
      parseConsQName (UnQual n) = parseHsName n
-     parseConsQName (Special (HsListCon)) = "Nil"
-     parseConsQName (Special (HsCons)) = "Cons"
+     parseConsQName (Special (HsListCon)) = "NilTransformer"
+     parseConsQName (Special (HsCons)) = "ConsTransformer"
      parseConsQName c = error $ "Unexpected constructor: " ++ show c
      
      parseHsConArgs e'@(HsApp (HsCon _) e) = [parseHsExp e]
@@ -127,13 +138,13 @@ parseHsExp e = error $ "Unallowed expression type: " ++ show e
 -- Only allow functions/variables
 parseHsQOp :: HsQOp -> String
 parseHsQOp (HsQVarOp qn) = parseHsQName qn
-parseHsQOp (HsQConOp (Special HsListCon)) = "Nil"
-parseHsQOp (HsQConOp (Special HsCons)) = "Cons"
+parseHsQOp (HsQConOp (Special HsListCon)) = "NilTransformer"
+parseHsQOp (HsQConOp (Special HsCons)) = "ConsTransformer"
 parseHsQOp q = error $ "Attempting to parse unexpected operator: " ++ show q
 
 parseHsList :: [HsExp] -> Term
-parseHsList [] = Con "Nil" []
-parseHsList (e:es) = Con "Cons" [parseHsExp e, parseHsList es]
+parseHsList [] = Con "NilTransformer" []
+parseHsList (e:es) = Con "ConsTransformer" [parseHsExp e, parseHsList es]
 
 parseHsAlts :: [HsAlt] -> [Branch]
 parseHsAlts = map parseHsAlt
