@@ -117,6 +117,10 @@ parseHsExp (HsLambda _ pats e) =
 parseHsExp (HsCase e alts) = Case (parseHsExp e) (parseHsAlts alts)
 parseHsExp (HsList es) = parseHsList es
 parseHsExp (HsParen e) = parseHsExp e
+parseHsExp (HsLet bs e) =
+    let bindings = parseHsDecls bs
+        body = parseHsExp e
+    in foldl (\e' (v, e) -> Let v e (abstract 0 v e')) body bindings
 parseHsExp e = error $ "Unallowed expression type: " ++ show e
 
 -- Only allow functions/variables

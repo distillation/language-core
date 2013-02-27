@@ -71,7 +71,7 @@ rebuildExp (Lambda v e) =
     in HsLambda (SrcLoc "" 0 0) [HsPVar (HsIdent v')] (rebuildExp (subst 0 (Free v') e))
 rebuildExp (Let v e e') = 
     let v' = rename (free e') v
-    in HsApp (HsLambda (SrcLoc "" 0 0) [HsPVar (HsIdent v')] (rebuildExp e')) (rebuildExp (subst 0 (Free v') e))
+    in HsLet [HsFunBind [HsMatch (SrcLoc "" 0 0) (HsIdent v') [] (HsUnGuardedRhs (rebuildExp e)) []]] (rebuildExp (subst 0 (Free v') e'))
 rebuildExp (Fun v) = HsVar (UnQual (HsIdent v))
 rebuildExp (Con "Nil" []) = HsCon (Special HsListCon)
 rebuildExp c@(Con "Cons" es)
@@ -81,9 +81,11 @@ rebuildExp (Con c es) =
         cons = HsCon (UnQual (HsIdent c))
         args = map rebuildExp es
     in foldl (\e e' -> HsApp e e') cons args
+rebuildExp (Apply (Apply (Fun "par") x) y) = HsInfixApp (HsParen (rebuildExp x)) (HsQVarOp (UnQual (HsIdent "par"))) (HsParen (rebuildExp y))
 rebuildExp (Apply e e') = HsApp (rebuildExp e) (rebuildExp e')
 rebuildExp (Case e bs) = HsCase (rebuildExp e) (rebuildAlts bs)
 rebuildExp (Where e bs) = HsLet (rebuildDecls bs) (rebuildExp e)
+rebuildExp (Bound i) = HsVar (UnQual (HsIdent (show i)))
 
 rebuildAlts :: [Branch] -> [HsAlt]
 rebuildAlts = map rebuildAlt
