@@ -73,15 +73,28 @@ rebuildExp (Let v e e') =
     let v' = rename (free e') v
     in HsLet [HsFunBind [HsMatch (SrcLoc "" 0 0) (HsIdent v') [] (HsUnGuardedRhs (rebuildExp e)) []]] (rebuildExp (subst 0 (Free v') e'))
 rebuildExp (Fun v) = HsVar (UnQual (HsIdent v))
-rebuildExp (Con "Nil" []) = HsCon (Special HsListCon)
-rebuildExp c@(Con "Cons" es)
+rebuildExp (Con "NilTransformer" []) = HsCon (Special HsListCon)
+rebuildExp c@(Con "ConsTransformer" es)
  | isConApp c = rebuildCon es
 rebuildExp (Con c es) = 
     let
         cons = HsCon (UnQual (HsIdent c))
         args = map rebuildExp es
     in foldl (\e e' -> HsApp e e') cons args
-rebuildExp (Apply (Apply (Fun "par") x) y) = HsInfixApp (HsParen (rebuildExp x)) (HsQVarOp (UnQual (HsIdent "par"))) (HsParen (rebuildExp y))
+rebuildExp (Apply (Apply (Fun f) x@(Free _)) y@(Free _))
+ | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = HsInfixApp (rebuildExp x) (HsQVarOp (UnQual (HsIdent f))) (rebuildExp y)
+rebuildExp (Apply (Apply (Fun f) x@(Free _)) y)
+ | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = HsInfixApp (rebuildExp x) (HsQVarOp (UnQual (HsIdent f))) (HsParen (rebuildExp y))
+rebuildExp (Apply (Apply (Fun f) x) y@(Free _))
+ | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = HsInfixApp (HsParen (rebuildExp x)) (HsQVarOp (UnQual (HsIdent f))) (rebuildExp y)
+rebuildExp (Apply (Apply (Fun f) x@(Fun _)) y@(Fun _))
+ | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = HsInfixApp (rebuildExp x) (HsQVarOp (UnQual (HsIdent f))) (rebuildExp y)
+rebuildExp (Apply (Apply (Fun f) x@(Fun _)) y)
+ | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = HsInfixApp (rebuildExp x) (HsQVarOp (UnQual (HsIdent f))) (HsParen (rebuildExp y))
+rebuildExp (Apply (Apply (Fun f) x) y@(Fun _))
+ | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = HsInfixApp (HsParen (rebuildExp x)) (HsQVarOp (UnQual (HsIdent f))) (rebuildExp y)
+rebuildExp (Apply (Apply (Fun f) x) y)
+ | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = HsInfixApp (HsParen (rebuildExp x)) (HsQVarOp (UnQual (HsIdent f))) (HsParen (rebuildExp y))
 rebuildExp (Apply e e') = HsApp (rebuildExp e) (rebuildExp e')
 rebuildExp (Case e bs) = HsCase (rebuildExp e) (rebuildAlts bs)
 rebuildExp (Where e bs) = HsLet (rebuildDecls bs) (rebuildExp e)
@@ -98,16 +111,16 @@ rebuildAlt (Branch c args e) =
     in HsAlt (SrcLoc "" 0 0) (HsPApp (UnQual (HsIdent c)) (map (\v -> HsPVar (HsIdent v)) args')) (HsUnGuardedAlt (rebuildExp e')) []
 
 rebuildCon :: [Term] -> HsExp
-rebuildCon ((Con "Nil" []):[]) = HsCon (Special HsListCon)
+rebuildCon ((Con "NilTransformer" []):[]) = HsCon (Special HsListCon)
 rebuildCon (e:[]) = rebuildExp e
 rebuildCon (e:es) = HsParen (HsInfixApp (rebuildExp e) (HsQConOp (Special HsCons)) (rebuildCon es))
 rebuildCon [] = error "Rebuilding empty list."
 
 isConApp :: Term -> Bool
-isConApp (Con "Cons" es) = isConApp' (last es)
+isConApp (Con "ConsTransformer" es) = isConApp' (last es)
  where
-     isConApp' (Con "Cons" es) = isConApp' (last es)
-     isConApp' (Con "Nil" []) = True
+     isConApp' (Con "ConsTransformer" es) = isConApp' (last es)
+     isConApp' (Con "NilTransformer" []) = True
      isConApp' (Free _) = True
      isConApp' _ = False
 isConApp _ = False
