@@ -7,7 +7,7 @@ module Language.Core.Parser(
 import Language.Haskell.Syntax
 import Language.Haskell.Parser
 import Language.Core.Syntax
-import Data.List(find, delete)
+import Data.List(find, delete, nub)
 
 parseFile :: FilePath -> IO Program
 parseFile file = do
@@ -26,7 +26,22 @@ parseHsModule (HsModule src mn es is ds) =
         main = case find (\f -> fst f == "main") funcs of
             Nothing -> error "No main function defined."
             Just f -> snd f
-    in Program (Where main (delete ("main", main) funcs)) src mn es is
+    in Program (fixFunctions (Where main (delete ("main", main) funcs)) ["main"]) src mn es is
+ 
+fixFunctions e@(Free v) funcNames
+ | v `elem` funcNames = Fun v
+ | otherwise = e
+fixFunctions e@(Bound _) funcNames = e
+fixFunctions (Lambda v e) funcNames = Lambda v (fixFunctions e funcNames)
+fixFunctions (Con c es) funcNames = Con c (map (\e -> fixFunctions e funcNames) es)
+fixFunctions (Apply e e') funcNames = Apply (fixFunctions e funcNames) (fixFunctions e' funcNames)
+fixFunctions e@(Fun _) funcNames = e
+fixFunctions (Case e bs) funcNames = Case (fixFunctions e funcNames) (map (\(Branch c args e) -> Branch c args (fixFunctions e funcNames)) bs)
+fixFunctions (Let v e e') funcNames = Let v (fixFunctions e funcNames) (fixFunctions e' funcNames)
+fixFunctions (Where e locals) funcNames =
+    let (names, bodies) = unzip locals
+        funcNames' = nub (names ++ funcNames)
+    in Where (fixFunctions e funcNames') (map (\(n, b) -> (n, fixFunctions b funcNames')) locals)
  
 parseHsDecls :: [HsDecl] -> [Function]   
 parseHsDecls ds = map parseHsDecl (filter hsDeclIsFunc ds)
