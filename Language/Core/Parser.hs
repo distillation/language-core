@@ -71,6 +71,7 @@ parseHsRhs (HsGuardedRhss guards) = parseHsGuardedRhss guards
 parseHsGuardedRhss :: [HsGuardedRhs] -> Term
 parseHsGuardedRhss ((HsGuardedRhs _ e e'):[]) = Case (parseHsExp e) [Branch "True" [] (parseHsExp e')]
 parseHsGuardedRhss ((HsGuardedRhs _ e e'):gs) = Case (parseHsExp e) [Branch "True" [] (parseHsExp e'), Branch "False" [] (parseHsGuardedRhss gs)]
+parseHsGuardedRhss [] = error "Attempting to parse empty set of guarded rhs"
 
 parseSpecialCon :: HsSpecialCon -> String
 parseSpecialCon (HsListCon) = "NilTransformer"
@@ -89,41 +90,42 @@ parseHsExp (HsInfixApp e o e')
      in buildCon es
  | otherwise = Apply (Apply (Free (parseHsQOp o)) (parseHsExp e)) (parseHsExp e')
  where
-     gatherInfixConsArgs f@(HsInfixApp e o e')
-      | parseHsQOp o == "NilTransformer" = [Con "NilTransformer" []]
-      | parseHsQOp o == "ConsTransformer" = gatherInfixConsArgs e ++ [parseHsExp e']
+     gatherInfixConsArgs f@(HsInfixApp g p g')
+      | parseHsQOp p == "NilTransformer" = [Con "NilTransformer" []]
+      | parseHsQOp p == "ConsTransformer" = gatherInfixConsArgs g ++ [parseHsExp g']
       | otherwise = [parseHsExp f]
-     gatherInfixConsArgs e = [parseHsExp e]
+     gatherInfixConsArgs f = [parseHsExp f]
          
-     buildCon (e:e':[]) = Con "ConsTransformer" [e, e']
-     buildCon (e:es) = Con "ConsTransformer" [e, buildCon es]
+     buildCon (f:f':[]) = Con "ConsTransformer" [f, f']
+     buildCon (f:fs) = Con "ConsTransformer" [f, buildCon fs]
+     buildCon [] = error "Attempting to parse empty set of cons elements to ConsTransformer"
 parseHsExp app@(HsApp e e')
  | isConApp app = Con (parseHsCon e) (parseHsConArgs e ++ [parseHsExp e'])
  | otherwise = Apply (parseHsExp e) (parseHsExp e')
  where
      isConApp (HsApp (HsCon _) _) = True
-     isConApp (HsApp e _) = isConApp e
+     isConApp (HsApp f _) = isConApp f
      isConApp _ = False
      
      parseHsCon (HsApp (HsCon qn) _) = parseConsQName qn
-     parseHsCon (HsApp e _) = parseHsCon e
+     parseHsCon (HsApp f _) = parseHsCon f
      parseHsCon (HsCon qn) = parseConsQName qn
-     parseHsCon e = error $ "Parsing unexpected expression as constructor: " ++ show e
+     parseHsCon f = error $ "Parsing unexpected expression as constructor: " ++ show f
      
      parseConsQName (UnQual n) = parseHsName n
      parseConsQName (Special (HsListCon)) = "NilTransformer"
      parseConsQName (Special (HsCons)) = "ConsTransformer"
      parseConsQName c = error $ "Unexpected constructor: " ++ show c
      
-     parseHsConArgs e'@(HsApp (HsCon _) e) = [parseHsExp e]
-     parseHsConArgs (HsApp e e') =  parseHsConArgs e ++ [parseHsExp e'] 
+     parseHsConArgs (HsApp (HsCon _) f) = [parseHsExp f]
+     parseHsConArgs (HsApp f f') =  parseHsConArgs f ++ [parseHsExp f'] 
      parseHsConArgs (HsCon _) = []
-     parseHsConArgs e = [parseHsExp e]
+     parseHsConArgs f = [parseHsExp f]
 parseHsExp (HsLambda _ pats e) =
     let
         lamVars = map parseHsPatToVar pats
         body = parseHsExp e
-    in foldr (\v e -> Lambda v (abstract 0 v e)) body lamVars
+    in foldr (\v e' -> Lambda v (abstract 0 v e')) body lamVars
 parseHsExp (HsCase e alts) = Case (parseHsExp e) (parseHsAlts alts)
 parseHsExp (HsList es) = parseHsList es
 parseHsExp (HsParen e) = parseHsExp e
@@ -131,7 +133,7 @@ parseHsExp (HsIf c t e) = Case (parseHsExp c) [Branch "True" [] (parseHsExp t), 
 parseHsExp (HsLet bs e) =
     let bindings = parseHsDecls bs
         body = parseHsExp e
-    in foldl (\e' (v, e) -> Let v e (abstract 0 v e')) body bindings
+    in foldl (\f' (v, f) -> Let v f (abstract 0 v f')) body bindings
 parseHsExp e = error $ "Unallowed expression type: " ++ show e
 
 parseHsLit :: HsLiteral -> Term
@@ -152,6 +154,7 @@ parseInt n
 parseHsString :: String -> Term
 parseHsString (c:[]) = Con (c:"") []
 parseHsString (c:cs) = Con (c:"") [parseHsString cs]
+parseHsString [] = error "Attempting to parse empty string as string"
 
 -- Only allow functions/variables
 parseHsQOp :: HsQOp -> String
@@ -195,14 +198,14 @@ fixFunctions :: Term -> [String] -> Term
 fixFunctions e@(Free v) funcNames
  | v `elem` funcNames = Fun v
  | otherwise = e
-fixFunctions e@(Bound _) funcNames = e
+fixFunctions e@(Bound _) _ = e
 fixFunctions (Lambda v e) funcNames = Lambda v (fixFunctions e funcNames)
 fixFunctions (Con c es) funcNames = Con c (map (\e -> fixFunctions e funcNames) es)
 fixFunctions (Apply e e') funcNames = Apply (fixFunctions e funcNames) (fixFunctions e' funcNames)
-fixFunctions e@(Fun _) funcNames = e
-fixFunctions (Case e bs) funcNames = Case (fixFunctions e funcNames) (map (\(Branch c args e) -> Branch c args (fixFunctions e funcNames)) bs)
+fixFunctions e@(Fun _) _ = e
+fixFunctions (Case e bs) funcNames = Case (fixFunctions e funcNames) (map (\(Branch c args e') -> Branch c args (fixFunctions e' funcNames)) bs)
 fixFunctions (Let v e e') funcNames = Let v (fixFunctions e funcNames) (fixFunctions e' funcNames)
 fixFunctions (Where e locals) funcNames =
-    let (names, bodies) = unzip locals
+    let (names, _) = unzip locals
         funcNames' = nub (names ++ funcNames)
     in Where (fixFunctions e funcNames') (map (\(n, b) -> (n, fixFunctions b funcNames')) locals)
