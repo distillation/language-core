@@ -38,30 +38,25 @@ hsDeclIsFunc _ = False
 
 -- No multiple function definitions allowed
 parseHsDecl :: HsDecl -> Function
-parseHsDecl (HsFunBind [HsMatch _ name pats rhs []]) = -- No local definitions
-    let
-        functionName = parseHsName name
-        args = map parseHsPatToVar pats
-        body = parseHsRhs rhs
-    in (functionName, foldr (\v e -> Lambda v e) body args)
 parseHsDecl (HsFunBind [HsMatch _ name pats rhs decls]) = -- Local definitions
     let
         functionName = parseHsName name
         args = map parseHsPatToVar pats
         body = parseHsRhs rhs
         locals = parseHsDecls decls
-    in (functionName, Where (foldr (\v e -> Lambda v (abstract 0 v e)) body args) locals)
-parseHsDecl (HsPatBind _ name rhs []) = -- No local definitions
-    let
-        functionName = parseHsPatToVar name
-        body = parseHsRhs rhs
-    in (functionName, body)    
+        body' = case length decls of
+            0 -> foldr (\v e -> Lambda v (abstract 0 v e)) body args
+            _ -> foldr (\v e -> Lambda v (abstract 0 v e)) (Where body locals) args
+    in (functionName, body')
 parseHsDecl (HsPatBind _ name rhs decls) = -- Local definitions
     let
         functionName = parseHsPatToVar name
         body = parseHsRhs rhs
         locals = parseHsDecls decls
-    in (functionName, Where body locals)
+        body' = case length decls of
+            0 -> body
+            _ -> Where body locals
+    in (functionName, body')
 parseHsDecl d = error $ "Attempting to parse invalid decls as function: " ++ show d
     
 -- Only allow variable names as function bound arguments or lambda variables
@@ -69,7 +64,6 @@ parseHsPatToVar :: HsPat -> String
 parseHsPatToVar (HsPVar n) = parseHsName n
 parseHsPatToVar p = error $ "Unexpection function patterns: " ++ show p
 
--- Only allow unguarded expressions
 parseHsRhs :: HsRhs -> Term
 parseHsRhs (HsUnGuardedRhs e) = parseHsExp e
 parseHsRhs (HsGuardedRhss guards) = parseHsGuardedRhss guards
@@ -77,7 +71,6 @@ parseHsRhs (HsGuardedRhss guards) = parseHsGuardedRhss guards
 parseHsGuardedRhss :: [HsGuardedRhs] -> Term
 parseHsGuardedRhss ((HsGuardedRhs _ e e'):[]) = Case (parseHsExp e) [Branch "True" [] (parseHsExp e')]
 parseHsGuardedRhss ((HsGuardedRhs _ e e'):gs) = Case (parseHsExp e) [Branch "True" [] (parseHsExp e'), Branch "False" [] (parseHsGuardedRhss gs)]
-
 
 parseSpecialCon :: HsSpecialCon -> String
 parseSpecialCon (HsListCon) = "NilTransformer"
