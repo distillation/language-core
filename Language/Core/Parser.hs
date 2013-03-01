@@ -69,8 +69,8 @@ parseHsRhs (HsUnGuardedRhs e) = parseHsExp e
 parseHsRhs (HsGuardedRhss guards) = parseHsGuardedRhss guards
 
 parseHsGuardedRhss :: [HsGuardedRhs] -> Term
-parseHsGuardedRhss ((HsGuardedRhs _ e e'):[]) = Case (parseHsExp e) [Branch "True" [] (parseHsExp e')]
-parseHsGuardedRhss ((HsGuardedRhs _ e e'):gs) = Case (parseHsExp e) [Branch "True" [] (parseHsExp e'), Branch "False" [] (parseHsGuardedRhss gs)]
+parseHsGuardedRhss (HsGuardedRhs _ e e':[]) = Case (parseHsExp e) [Branch "True" [] (parseHsExp e')]
+parseHsGuardedRhss (HsGuardedRhs _ e e':gs) = Case (parseHsExp e) [Branch "True" [] (parseHsExp e'), Branch "False" [] (parseHsGuardedRhss gs)]
 parseHsGuardedRhss [] = error "Attempting to parse empty set of guarded rhs"
 
 parseSpecialCon :: HsSpecialCon -> String
@@ -113,8 +113,8 @@ parseHsExp app@(HsApp e e')
      parseHsCon f = error $ "Parsing unexpected expression as constructor: " ++ show f
      
      parseConsQName (UnQual n) = parseHsName n
-     parseConsQName (Special (HsListCon)) = "NilTransformer"
-     parseConsQName (Special (HsCons)) = "ConsTransformer"
+     parseConsQName (Special HsListCon) = "NilTransformer"
+     parseConsQName (Special HsCons) = "ConsTransformer"
      parseConsQName c = error $ "Unexpected constructor: " ++ show c
      
      parseHsConArgs (HsApp (HsCon _) f) = [parseHsExp f]
@@ -177,7 +177,7 @@ parseHsAlt (HsAlt _ (HsPApp qn args) alt []) =
         cons = parseHsQName qn
         consArgs = map parseHsPatToVar args
         body = parseHsGuardedAlts alt
-    in Branch cons consArgs (foldl (\e v -> abstract 0 v e) body consArgs)
+    in Branch cons consArgs (foldl (flip (abstract 0)) body consArgs)
 parseHsAlt a = error $ "Unexpected case pattern: " ++ show a
     
 -- Only allow unguarded alts
@@ -200,7 +200,7 @@ fixFunctions e@(Free v) funcNames
  | otherwise = e
 fixFunctions e@(Bound _) _ = e
 fixFunctions (Lambda v e) funcNames = Lambda v (fixFunctions e funcNames)
-fixFunctions (Con c es) funcNames = Con c (map (\e -> fixFunctions e funcNames) es)
+fixFunctions (Con c es) funcNames = Con c (map (`fixFunctions` funcNames) es)
 fixFunctions (Apply e e') funcNames = Apply (fixFunctions e funcNames) (fixFunctions e' funcNames)
 fixFunctions e@(Fun _) _ = e
 fixFunctions (Case e bs) funcNames = Case (fixFunctions e funcNames) (map (\(Branch c args e') -> Branch c args (fixFunctions e' funcNames)) bs)

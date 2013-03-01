@@ -15,6 +15,7 @@ module Language.Core.Syntax(
     
 import Language.Haskell.Syntax
 import Language.Haskell.Pretty
+import Control.Arrow(second)
 
 data Program = Program Term SrcLoc Module (Maybe [HsExportSpec]) [HsImportDecl]
 
@@ -40,7 +41,7 @@ instance Eq Term where
    (==) (Apply e f) (Apply e' f') = e == e' && f == f'
    (==) (Fun f) (Fun f') = f == f'
    (==) u@(Case e bs) u'@(Case e' bs') 
-    | match u u' = e == e' && (all (\(a, b) -> a == b) (zip bs bs'))
+    | match u u' = e == e' && all (uncurry (==)) (zip bs bs')
    (==) (Let _ e f) (Let _ e' f') = e == e' && f == f'
    (==) (Where e fs) (Where e' fs') = let (_, gs) = unzip fs
                                           (_', gs') = unzip fs'
@@ -77,7 +78,7 @@ rebuildExp (Let v e e') =
 rebuildExp (Fun v) = HsVar (UnQual (HsIdent v))
 rebuildExp e@(Con "S" _) = rebuildInt e
 rebuildExp (Con "Z" _) = HsLit (HsInt 0)
-rebuildExp (Con "CharTransformer" ((Con c []):[])) = HsLit (HsChar (head c))
+rebuildExp (Con "CharTransformer" (Con c []:[])) = HsLit (HsChar (head c))
 rebuildExp (Con "StringTransformer" [e]) = HsLit (HsString (rebuildString e))
 rebuildExp (Con "NilTransformer" []) = HsCon (Special HsListCon)
 rebuildExp c@(Con "ConsTransformer" es)
@@ -86,7 +87,7 @@ rebuildExp (Con c es) =
     let
         cons = HsCon (UnQual (HsIdent c))
         args = map rebuildExp es
-    in foldl (\e e' -> HsApp e e') cons args
+    in foldl HsApp cons args
 rebuildExp (Apply (Apply (Fun f) x@(Free _)) y@(Free _))
  | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = HsInfixApp (rebuildExp x) (HsQVarOp (UnQual (HsIdent f))) (rebuildExp y)
 rebuildExp (Apply (Apply (Fun f) x@(Free _)) y)
@@ -124,13 +125,13 @@ rebuildAlts = map rebuildAlt
 
 rebuildAlt :: Branch -> HsAlt
 rebuildAlt (Branch c args e) =
-    let fv = foldr (\x fv' -> (rename fv' x):fv') (free e) args
+    let fv = foldr (\x fv' -> rename fv' x:fv') (free e) args
         args' = take (length args) fv
         e' = foldr (\x t -> subst 0 (Free x) t) e args'
-    in HsAlt (SrcLoc "" 0 0) (HsPApp (UnQual (HsIdent c)) (map (\v -> HsPVar (HsIdent v)) args')) (HsUnGuardedAlt (rebuildExp e')) []
+    in HsAlt (SrcLoc "" 0 0) (HsPApp (UnQual (HsIdent c)) (map (HsPVar . HsIdent) args')) (HsUnGuardedAlt (rebuildExp e')) []
 
 rebuildCon :: [Term] -> HsExp
-rebuildCon ((Con "NilTransformer" []):[]) = HsCon (Special HsListCon)
+rebuildCon (Con "NilTransformer" []:[]) = HsCon (Special HsListCon)
 rebuildCon (e:[]) = rebuildExp e
 rebuildCon (e:es) = HsParen (HsInfixApp (rebuildExp e) (HsQConOp (Special HsCons)) (rebuildCon es))
 rebuildCon [] = error "Rebuilding empty list."
@@ -147,25 +148,25 @@ isConApp _ = False
 match :: Term -> Term -> Bool
 match (Free x) (Free x') = x == x'
 match (Bound i) (Bound i') = i == i'
-match (Lambda _ _) (Lambda _ _) = True
+match (Lambda{}) (Lambda{}) = True
 match (Con c ts) (Con c' ts') = c == c' && length ts == length ts'
 match (Apply t _) (Apply t' _) = match t t'
 match (Fun f) (Fun f') = f == f'
-match (Case _ bs) (Case _ bs') = (length bs == length bs') && (all (\((Branch c xs _), (Branch c' xs' _)) -> c == c' && length xs == length xs') (zip bs bs'))
-match (Let _ _ _) (Let _ _ _) = True
+match (Case _ bs) (Case _ bs') = (length bs == length bs') && all (\(Branch c xs _, Branch c' xs' _) -> c == c' && length xs == length xs') (zip bs bs')
+match (Let{}) (Let{}) = True
 match (Where _ ds) (Where _ ds') = length ds == length ds'
 match _ _ = False
 
 free :: Term -> [String]
-free t = free' [] t
+free = free' []
 
 free' :: [String] -> Term -> [String]
 free' xs (Free x)
  | x `elem` xs = xs
- | otherwise = (x:xs)
+ | otherwise = x:xs
 free' xs (Bound _) = xs
 free' xs (Lambda _ t) = free' xs t
-free' xs (Con _ ts) = foldr (\t xs' -> free' xs' t) xs ts
+free' xs (Con _ ts) = foldr (flip free') xs ts
 free' xs (Apply t u) = free' (free' xs t) u
 free' xs (Fun _) = xs
 free' xs (Case t bs) = foldr (\(Branch _ _ t') xs' -> free' xs' t') (free' xs t) bs
@@ -173,16 +174,16 @@ free' xs (Let _ t u) = free' (free' xs t) u
 free' xs (Where t ds) = foldr (\(_, t') xs' -> free' xs' t') (free' xs t) ds
 
 bound :: Term -> [Int]
-bound t = bound' 0 [] t
+bound = bound' 0 []
 
 bound' :: Int -> [Int] -> Term -> [Int]
 bound' _ bs (Free _) = bs
 bound' d bs (Bound i)
  | b < 0 || b `elem` bs = bs
- | otherwise = (b:bs)
+ | otherwise = b:bs
  where b = i - d
 bound' d bs (Lambda _ t) = bound' (d + 1) bs t
-bound' d bs (Con _ ts) = foldr (\t bs' -> bound' d bs' t) bs ts
+bound' d bs (Con _ ts) = foldr (flip (bound' d)) bs ts
 bound' d bs (Apply t u) = bound' d (bound' d bs u) t
 bound' _ bs (Fun _) = bs
 bound' d bs (Case t bs') = foldr (\(Branch _ xs t') bs'' -> bound' (d + length xs) bs'' t') (bound' d bs t) bs'
@@ -190,13 +191,13 @@ bound' d bs (Let _ t u) = bound' (d + 1) (bound' d bs t) u
 bound' d bs (Where t ds) = foldr (\(_, t') bs' -> bound' d bs' t') (bound' d bs t) ds
 
 funs :: Term -> [String]
-funs t = funs' [] t
+funs = funs' []
 
 funs' :: [String] -> Term -> [String]
 funs' fs (Free _) = fs
 funs' fs (Bound _) = fs
 funs' fs (Lambda _ t) = funs' fs t
-funs' fs (Con _ ts) = foldr (\t fs' -> funs' fs' t) fs ts
+funs' fs (Con _ ts) = foldr (flip funs') fs ts
 funs' fs (Fun f) = f:fs
 funs' fs (Apply t u) = funs' (funs' fs t) u
 funs' fs (Case t bs) = foldr (\(Branch _ _ t') fs' -> funs' fs' t') (funs' fs t) bs
@@ -215,7 +216,7 @@ shift i d (Apply t u) = Apply (shift i d t) (shift i d u)
 shift _ _ (Fun f) = Fun f
 shift i d (Case t bs) = Case (shift i d t) (map (\(Branch c xs t') -> (Branch c xs (shift i (d + length xs) t'))) bs)
 shift i d (Let x t u) = Let x (shift i d t) (shift i (d + 1) u)
-shift i d (Where t ds) = Where (shift i d t) (map (\(x, t') -> (x, shift i d t')) ds)
+shift i d (Where t ds) = Where (shift i d t) (map (second (shift i d)) ds)
 
 subst :: Int -> Term -> Term -> Term
 subst _ _ (Free x) = Free x
@@ -229,7 +230,7 @@ subst i t (Apply t' u) = Apply (subst i t t') (subst i t u)
 subst _ _ (Fun f) = Fun f
 subst i t (Case t' bs) = Case (subst i t t') (map (\(Branch c xs u) -> (Branch c xs (subst (i + length xs) t u))) bs)
 subst i t (Let x t' u) = Let x (subst i t t') (subst (i + 1) t u)
-subst i t (Where t' ds) = Where (subst i t t') (map (\(x, u) -> (x, subst i t u)) ds)
+subst i t (Where t' ds) = Where (subst i t t') (map (second (subst i t)) ds)
 
 abstract :: Int -> String -> Term -> Term
 abstract i b (Free x)
@@ -244,7 +245,7 @@ abstract i b (Apply t u) = Apply (abstract i b t) (abstract i b u)
 abstract _ _ (Fun f) = Fun f
 abstract i b (Case t bs) = Case (abstract i b t) (map (\(Branch c xs t') -> (Branch c xs (abstract (i + length xs) b t'))) bs)
 abstract i b (Let x t u) = Let x (abstract i b t) (abstract (i + 1) b u)
-abstract i b (Where t ds) = Where (abstract i b t) (map (\(x, t') -> (x, abstract i b t')) ds)
+abstract i b (Where t ds) = Where (abstract i b t) (map (second (abstract i b)) ds)
 
 rename :: [String] -> String -> String
 rename xs x
