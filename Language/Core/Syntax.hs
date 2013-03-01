@@ -73,6 +73,10 @@ rebuildExp (Let v e e') =
     let v' = rename (free e') v
     in HsLet [HsFunBind [HsMatch (SrcLoc "" 0 0) (HsIdent v') [] (HsUnGuardedRhs (rebuildExp e)) []]] (rebuildExp (subst 0 (Free v') e'))
 rebuildExp (Fun v) = HsVar (UnQual (HsIdent v))
+rebuildExp e@(Con "S" _) = rebuildInt e
+rebuildExp (Con "Z" _) = HsLit (HsInt 0)
+rebuildExp (Con "CharTransformer" ((Con c []):[])) = HsLit (HsChar (head c))
+rebuildExp (Con "StringTransformer" [e]) = HsLit (HsString (rebuildString e))
 rebuildExp (Con "NilTransformer" []) = HsCon (Special HsListCon)
 rebuildExp c@(Con "ConsTransformer" es)
  | isConApp c = rebuildCon es
@@ -99,6 +103,17 @@ rebuildExp (Apply e e') = HsApp (rebuildExp e) (rebuildExp e')
 rebuildExp (Case e bs) = HsCase (rebuildExp e) (rebuildAlts bs)
 rebuildExp (Where e bs) = HsLet (rebuildDecls bs) (rebuildExp e)
 rebuildExp (Bound i) = HsVar (UnQual (HsIdent (show i)))
+
+rebuildInt :: Term -> HsExp
+rebuildInt e = HsLit (HsInt (rebuildInt' e))
+
+rebuildInt' :: Term -> Integer
+rebuildInt' (Con "Z" _) = 0
+rebuildInt' (Con "S" (e:[])) = 1 + rebuildInt' e
+
+rebuildString :: Term -> String
+rebuildString (Con c []) = c
+rebuildString (Con c (e:[])) = c ++ rebuildString e
 
 rebuildAlts :: [Branch] -> [HsAlt]
 rebuildAlts = map rebuildAlt

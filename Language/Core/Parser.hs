@@ -28,21 +28,6 @@ parseHsModule (HsModule src mn es is ds) =
             Just f -> snd f
     in Program (fixFunctions (Where main (delete ("main", main) funcs)) ["main"]) src mn es is
  
-fixFunctions e@(Free v) funcNames
- | v `elem` funcNames = Fun v
- | otherwise = e
-fixFunctions e@(Bound _) funcNames = e
-fixFunctions (Lambda v e) funcNames = Lambda v (fixFunctions e funcNames)
-fixFunctions (Con c es) funcNames = Con c (map (\e -> fixFunctions e funcNames) es)
-fixFunctions (Apply e e') funcNames = Apply (fixFunctions e funcNames) (fixFunctions e' funcNames)
-fixFunctions e@(Fun _) funcNames = e
-fixFunctions (Case e bs) funcNames = Case (fixFunctions e funcNames) (map (\(Branch c args e) -> Branch c args (fixFunctions e funcNames)) bs)
-fixFunctions (Let v e e') funcNames = Let v (fixFunctions e funcNames) (fixFunctions e' funcNames)
-fixFunctions (Where e locals) funcNames =
-    let (names, bodies) = unzip locals
-        funcNames' = nub (names ++ funcNames)
-    in Where (fixFunctions e funcNames') (map (\(n, b) -> (n, fixFunctions b funcNames')) locals)
- 
 parseHsDecls :: [HsDecl] -> [Function]   
 parseHsDecls ds = map parseHsDecl (filter hsDeclIsFunc ds)
 
@@ -98,6 +83,7 @@ parseHsExp :: HsExp -> Term
 parseHsExp (HsVar qn) = Free (parseHsQName qn)
 parseHsExp (HsCon (Special s)) = Con (parseSpecialCon s) []
 parseHsExp (HsCon qn) = Con (parseHsQName qn) []
+parseHsExp (HsLit lit) = parseHsLit lit
 parseHsExp (HsInfixApp e o e')
  | parseHsQOp o == "NilTransformer" = Con "NilTransformer" []
  | parseHsQOp o == "ConsTransformer" = 
@@ -150,6 +136,25 @@ parseHsExp (HsLet bs e) =
     in foldl (\e' (v, e) -> Let v e (abstract 0 v e')) body bindings
 parseHsExp e = error $ "Unallowed expression type: " ++ show e
 
+parseHsLit :: HsLiteral -> Term
+parseHsLit (HsInt i) = parseInt i
+parseHsLit (HsIntPrim i) = parseInt i
+parseHsLit (HsChar c) = Con "CharTransformer" [Con (c:"") []]
+parseHsLit (HsCharPrim c) = Con "CharTransformer" [Con (c:"") []]
+parseHsLit (HsString s) = Con "StringTransformer" [parseHsString s]
+parseHsLit (HsStringPrim s) = Con "StringTransformer" [parseHsString s]
+parseHsLit l = error ("Unexpected floating point number: " ++ show l)
+
+parseInt :: Integer -> Term
+parseInt 0 = Con "Z" []
+parseInt n 
+ | n < 0 = error ("Unexpected negative number" ++ show n)
+ | otherwise = Con "S" [parseInt (n - 1)]
+
+parseHsString :: String -> Term
+parseHsString (c:[]) = Con (c:"") []
+parseHsString (c:cs) = Con (c:"") [parseHsString cs]
+
 -- Only allow functions/variables
 parseHsQOp :: HsQOp -> String
 parseHsQOp (HsQVarOp qn) = parseHsQName qn
@@ -187,3 +192,19 @@ parseHsQName n = error "Unexpected variable: " ++ show n
 parseHsName :: HsName -> String
 parseHsName (HsIdent s) = s
 parseHsName (HsSymbol s) = s
+
+fixFunctions :: Term -> [String] -> Term
+fixFunctions e@(Free v) funcNames
+ | v `elem` funcNames = Fun v
+ | otherwise = e
+fixFunctions e@(Bound _) funcNames = e
+fixFunctions (Lambda v e) funcNames = Lambda v (fixFunctions e funcNames)
+fixFunctions (Con c es) funcNames = Con c (map (\e -> fixFunctions e funcNames) es)
+fixFunctions (Apply e e') funcNames = Apply (fixFunctions e funcNames) (fixFunctions e' funcNames)
+fixFunctions e@(Fun _) funcNames = e
+fixFunctions (Case e bs) funcNames = Case (fixFunctions e funcNames) (map (\(Branch c args e) -> Branch c args (fixFunctions e funcNames)) bs)
+fixFunctions (Let v e e') funcNames = Let v (fixFunctions e funcNames) (fixFunctions e' funcNames)
+fixFunctions (Where e locals) funcNames =
+    let (names, bodies) = unzip locals
+        funcNames' = nub (names ++ funcNames)
+    in Where (fixFunctions e funcNames') (map (\(n, b) -> (n, fixFunctions b funcNames')) locals)
