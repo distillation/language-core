@@ -72,7 +72,12 @@ parseHsPatToVar p = error $ "Unexpection function patterns: " ++ show p
 -- Only allow unguarded expressions
 parseHsRhs :: HsRhs -> Term
 parseHsRhs (HsUnGuardedRhs e) = parseHsExp e
-parseHsRhs rhs = error $ "Unexpected righthandside: " ++ show rhs
+parseHsRhs (HsGuardedRhss guards) = parseHsGuardedRhss guards
+
+parseHsGuardedRhss :: [HsGuardedRhs] -> Term
+parseHsGuardedRhss ((HsGuardedRhs _ e e'):[]) = Case (parseHsExp e) [Branch "True" [] (parseHsExp e')]
+parseHsGuardedRhss ((HsGuardedRhs _ e e'):gs) = Case (parseHsExp e) [Branch "True" [] (parseHsExp e'), Branch "False" [] (parseHsGuardedRhss gs)]
+
 
 parseSpecialCon :: HsSpecialCon -> String
 parseSpecialCon (HsListCon) = "NilTransformer"
