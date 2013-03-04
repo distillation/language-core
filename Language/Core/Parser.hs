@@ -20,21 +20,47 @@ parseString s = case parseModule s of
     err -> error $ show err
 
 parseHsModule :: HsModule -> Program
-parseHsModule (HsModule src mn es is ds) = 
+parseHsModule (HsModule _ mn es is ds) = 
     let
         funcs = parseHsDecls ds
         main = case find (\f -> fst f == "main") funcs of
             Nothing -> error "No main function defined."
             Just f -> snd f
-    in Program (fixFunctions (Where main (delete ("main", main) funcs)) ["main"]) src mn es is
+        cons = parseHsCons ds
+    in Program (fixFunctions (Where main (delete ("main", main) funcs)) ["main"]) cons mn es is
  
 parseHsDecls :: [HsDecl] -> [Function]   
 parseHsDecls ds = map parseHsDecl (filter hsDeclIsFunc ds)
+
+parseHsCons :: [HsDecl] -> [DataType]
+parseHsCons ds = map parseHsDataCon (filter hsDeclIsDataCon ds)
+
+parseHsDataCon :: HsDecl -> DataType
+parseHsDataCon (HsDataDecl _ con name vars cons qname) = DataType (parseHsName name) (map parseHsName vars) (map parseHsConDecl cons) (Just con) (Just qname)
+parseHsDataCon d = error ("Attempting to parse non data decl as data type: " ++ show d)
+
+parseHsConDecl :: HsConDecl -> (String, [DataType])
+parseHsConDecl (HsConDecl _ name bangs) = (parseHsName name, map parseHsBangType bangs)
+parseHsConDecl d = error ("Attempting to parse non con decl as data type: " ++ show d)
+
+parseHsBangType :: HsBangType -> DataType
+parseHsBangType (HsBangedTy t) = parseHsType t
+parseHsBangType (HsUnBangedTy t) = parseHsType t
+
+parseHsType :: HsType -> DataType
+parseHsType (HsTyVar v) = DataType (parseHsName v) [] [] Nothing Nothing
+parseHsType (HsTyApp (HsTyCon v) (HsTyVar v')) = DataType (parseHsQName v) [parseHsName v'] [] Nothing Nothing
+parseHsType (HsTyApp (HsTyApp (HsTyCon v) (HsTyVar v')) (HsTyVar v'')) = DataType (parseHsQName v) [parseHsName v', parseHsName v''] [] Nothing Nothing
+parseHsType t = error ("Attempting to parse disallowed type: " ++ show t)  
 
 hsDeclIsFunc :: HsDecl -> Bool
 hsDeclIsFunc (HsFunBind{}) = True
 hsDeclIsFunc (HsPatBind{}) = True
 hsDeclIsFunc _ = False
+
+hsDeclIsDataCon :: HsDecl -> Bool
+hsDeclIsDataCon (HsDataDecl{}) = True
+hsDeclIsDataCon _ = False
 
 -- No multiple function definitions allowed
 parseHsDecl :: HsDecl -> Function

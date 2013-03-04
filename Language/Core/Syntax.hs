@@ -3,6 +3,7 @@ module Language.Core.Syntax(
     Function,
     Term(Free, Lambda, Let, Fun, Con, Apply, Case, Bound, Where),
     Branch(Branch),
+    DataType(DataType),
     match,
     free,
     bound,
@@ -17,7 +18,7 @@ import Language.Haskell.Syntax
 import Language.Haskell.Pretty
 import Control.Arrow(second)
 
-data Program = Program Term SrcLoc Module (Maybe [HsExportSpec]) [HsImportDecl]
+data Program = Program Term [DataType] Module (Maybe [HsExportSpec]) [HsImportDecl]
 
 type Function = (String, Term)    
 
@@ -32,6 +33,8 @@ data Term = Free String
           | Where Term [Function]
           
 data Branch = Branch String [String] Term
+
+data DataType = DataType String [String] [(String, [DataType])] (Maybe HsContext) (Maybe [HsQName]) deriving Show
          
 instance Eq Term where
    (==) (Free v) (Free v') = v == v'
@@ -58,8 +61,8 @@ instance Show Term where
     show t = prettyPrint (rebuildExp t)
 
 rebuildModule :: Program -> HsModule    
-rebuildModule (Program (Where main funcs) src mn es is) = HsModule src mn es is (rebuildDecls (("main",main):funcs))
-rebuildModule (Program e src mn es is) = HsModule src mn es is (rebuildDecls [("main", e)])
+rebuildModule (Program (Where main funcs) cons mn es is) = HsModule (SrcLoc "" 0 0) mn es is (rebuildDecls (("main",main):funcs))
+rebuildModule (Program e cons mn es is) = HsModule (SrcLoc "" 0 0) mn es is (rebuildDecls [("main", e)])
 
 rebuildDecls :: [Function] -> [HsDecl]
 rebuildDecls = map rebuildDecl

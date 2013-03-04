@@ -3,6 +3,7 @@ module Language.Core(
     Function,
     Term(Free, Lambda, Let, Fun, Con, Apply, Case, Bound, Where),
     Branch(Branch),
+    DataType(DataType),
     parseFile,
     parseString,
     parseHsExp,
