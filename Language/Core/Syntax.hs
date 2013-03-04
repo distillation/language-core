@@ -61,8 +61,28 @@ instance Show Term where
     show t = prettyPrint (rebuildExp t)
 
 rebuildModule :: Program -> HsModule    
-rebuildModule (Program (Where main funcs) cons mn es is) = HsModule (SrcLoc "" 0 0) mn es is (rebuildDecls (("main",main):funcs))
-rebuildModule (Program e cons mn es is) = HsModule (SrcLoc "" 0 0) mn es is (rebuildDecls [("main", e)])
+rebuildModule (Program (Where main funcs) cons mn es is) = HsModule (SrcLoc "" 0 0) mn es is (rebuildDataCons cons ++ rebuildDecls (("main",main):funcs))
+rebuildModule (Program e cons mn es is) = HsModule (SrcLoc "" 0 0) mn es is (rebuildDataCons cons ++ rebuildDecls [("main", e)])
+
+rebuildDataCons :: [DataType] -> [HsDecl]
+rebuildDataCons = map rebuildDataCon
+
+rebuildDataCon :: DataType -> HsDecl
+rebuildDataCon (DataType name vars cons (Just context) (Just qnames)) = HsDataDecl (SrcLoc "" 0 0) context (HsIdent name) (map HsIdent vars) (rebuildConDecls cons) qnames
+
+rebuildConDecls :: [(String, [DataType])] -> [HsConDecl]
+rebuildConDecls = map rebuildConDecl
+
+rebuildConDecl :: (String, [DataType]) -> HsConDecl
+rebuildConDecl (name, btypes) = HsConDecl (SrcLoc "" 0 0)(HsIdent name) (rebuildBangTypes btypes)
+
+rebuildBangTypes :: [DataType] -> [HsBangType]
+rebuildBangTypes = map rebuildBangType
+
+rebuildBangType :: DataType -> HsBangType
+rebuildBangType (DataType name [] [] Nothing Nothing) = HsUnBangedTy (HsTyVar (HsIdent name))
+rebuildBangType (DataType cname (vname:[]) [] Nothing Nothing) = HsUnBangedTy (HsTyApp (HsTyCon (UnQual (HsIdent cname))) (HsTyVar (HsIdent vname)))
+rebuildBangType (DataType cname (vname:vname':[]) [] Nothing Nothing) = HsUnBangedTy (HsTyApp (HsTyApp (HsTyCon (UnQual (HsIdent cname))) (HsTyVar (HsIdent vname))) (HsTyVar (HsIdent vname')))
 
 rebuildDecls :: [Function] -> [HsDecl]
 rebuildDecls = map rebuildDecl
