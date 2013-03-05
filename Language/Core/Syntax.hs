@@ -165,7 +165,7 @@ rebuildCon es = rebuildCon' es
 rebuildCon' :: [Term] -> HsExp
 rebuildCon' (Con "NilTransformer" []:[]) = HsCon (Special HsListCon)
 rebuildCon' (e:[]) = rebuildExp e
-rebuildCon' (e:es) = HsParen (HsInfixApp (rebuildExp e) (HsQConOp (Special HsCons)) (rebuildCon es))
+rebuildCon' (e:es) = HsParen (HsInfixApp (rebuildExp e) (HsQConOp (Special HsCons)) (rebuildCon' es))
 rebuildCon' [] = error "Rebuilding empty list."
 
 match :: Term -> Term -> Bool
