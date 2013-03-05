@@ -1,6 +1,7 @@
 module Language.Core.Syntax(
     Program(Program),
     Function,
+    DataCon,
     Term(Free, Lambda, Let, Fun, Con, Apply, Case, Bound, Where),
     Branch(Branch),
     DataType(DataType),
@@ -20,7 +21,8 @@ import Control.Arrow(second)
 
 data Program = Program Term [DataType] Module (Maybe [HsExportSpec]) [HsImportDecl]
 
-type Function = (String, Term)    
+type Function = (String, Term)
+type DataCon = (String, [DataType])  
 
 data Term = Free String
           | Bound Int
@@ -34,7 +36,7 @@ data Term = Free String
           
 data Branch = Branch String [String] Term
 
-data DataType = DataType String [String] [(String, [DataType])] (Maybe HsContext) (Maybe [HsQName]) deriving Show
+data DataType = DataType String [String] [DataCon] (Maybe HsContext) (Maybe [HsQName]) deriving Show
          
 instance Eq Term where
    (==) (Free v) (Free v') = v == v'
