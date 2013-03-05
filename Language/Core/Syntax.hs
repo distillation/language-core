@@ -2,7 +2,7 @@ module Language.Core.Syntax(
     Program(Program),
     Function,
     DataCon,
-    Term(Free, Lambda, Let, Fun, Con, Apply, Case, Bound, Where),
+    Term(Free, Lambda, Let, Fun, Con, Apply, Case, Bound, Where, Tuple, TupleLet),
     Branch(Branch),
     DataType(DataType),
     match,
@@ -33,6 +33,8 @@ data Term = Free String
           | Case Term [Branch]
           | Let String Term Term
           | Where Term [Function]
+          | Tuple Term Term -- Only used in parallelization transformation.
+          | TupleLet String String Term Term -- Only used in parallelization transformation.
           
 data Branch = Branch String [String] Term
 
@@ -134,6 +136,8 @@ rebuildExp (Apply e e') = HsApp (rebuildExp e) (rebuildExp e')
 rebuildExp (Case e bs) = HsCase (rebuildExp e) (rebuildAlts bs)
 rebuildExp (Where e bs) = HsLet (rebuildDecls bs) (rebuildExp e)
 rebuildExp (Bound i) = HsVar (UnQual (HsIdent (show i)))
+rebuildExp (Tuple e e') = HsTuple [rebuildExp e, rebuildExp e']
+rebuildExp (TupleLet x x' e e') = HsLet [HsPatBind (SrcLoc "" 0 0) (HsPTuple [HsPVar (HsIdent x), HsPVar (HsIdent x')]) (HsUnGuardedRhs (rebuildExp e)) []] (rebuildExp (subst 0 (Free x) (subst 0 (Free x') e')))
 
 rebuildInt :: Term -> HsExp
 rebuildInt e = HsLit (HsInt (rebuildInt' e))
@@ -178,6 +182,8 @@ match (Fun f) (Fun f') = f == f'
 match (Case _ bs) (Case _ bs') = (length bs == length bs') && all (\(Branch c xs _, Branch c' xs' _) -> c == c' && length xs == length xs') (zip bs bs')
 match (Let{}) (Let{}) = True
 match (Where _ ds) (Where _ ds') = length ds == length ds'
+match (Tuple e f) (Tuple e' f') = match e e' && match f f'
+match (TupleLet{}) (TupleLet{}) = True
 match _ _ = False
 
 free :: Term -> [String]
@@ -195,6 +201,8 @@ free' xs (Fun _) = xs
 free' xs (Case t bs) = foldr (\(Branch _ _ t') xs' -> free' xs' t') (free' xs t) bs
 free' xs (Let _ t u) = free' (free' xs t) u
 free' xs (Where t ds) = foldr (\(_, t') xs' -> free' xs' t') (free' xs t) ds
+free' xs (Tuple e e') = free' (free' xs e) e'
+free' xs (TupleLet _ _ e e') = free' (free' xs e) e'
 
 bound :: Term -> [Int]
 bound = bound' 0 []
@@ -212,6 +220,8 @@ bound' _ bs (Fun _) = bs
 bound' d bs (Case t bs') = foldr (\(Branch _ xs t') bs'' -> bound' (d + length xs) bs'' t') (bound' d bs t) bs'
 bound' d bs (Let _ t u) = bound' (d + 1) (bound' d bs t) u
 bound' d bs (Where t ds) = foldr (\(_, t') bs' -> bound' d bs' t') (bound' d bs t) ds
+bound' d bs (Tuple t t') = bound' d (bound' d bs t) t'
+bound' d bs (TupleLet _ _ t u) = bound' (d + 2) (bound' d bs t) u
 
 funs :: Term -> [String]
 funs = funs' []
@@ -226,6 +236,8 @@ funs' fs (Apply t u) = funs' (funs' fs t) u
 funs' fs (Case t bs) = foldr (\(Branch _ _ t') fs' -> funs' fs' t') (funs' fs t) bs
 funs' fs (Let _ t u) = funs' (funs' fs t) u
 funs' fs (Where t ds) = foldr (\(_, t') fs' -> funs' fs' t') (funs' fs t) ds
+funs' fs (Tuple t u) = funs' (funs' fs t) u
+funs' fs (TupleLet _ _ t u) = funs' (funs' fs t) u
 
 shift :: Int -> Int -> Term -> Term
 shift 0 _ u = u
@@ -240,6 +252,8 @@ shift _ _ (Fun f) = Fun f
 shift i d (Case t bs) = Case (shift i d t) (map (\(Branch c xs t') -> (Branch c xs (shift i (d + length xs) t'))) bs)
 shift i d (Let x t u) = Let x (shift i d t) (shift i (d + 1) u)
 shift i d (Where t ds) = Where (shift i d t) (map (second (shift i d)) ds)
+shift i d (Tuple t t') = Tuple (shift i d t) (shift i d t')
+shift i d (TupleLet x x' t u) = TupleLet x x' (shift i d t) (shift i (d + 2) u)
 
 subst :: Int -> Term -> Term -> Term
 subst _ _ (Free x) = Free x
@@ -254,6 +268,8 @@ subst _ _ (Fun f) = Fun f
 subst i t (Case t' bs) = Case (subst i t t') (map (\(Branch c xs u) -> (Branch c xs (subst (i + length xs) t u))) bs)
 subst i t (Let x t' u) = Let x (subst i t t') (subst (i + 1) t u)
 subst i t (Where t' ds) = Where (subst i t t') (map (second (subst i t)) ds)
+subst i t (Tuple e e') = Tuple (subst i t e) (subst i t e')
+subst i t (TupleLet x x' e e') = TupleLet x x' (subst i t e) (subst (i + 2) t e')
 
 abstract :: Int -> String -> Term -> Term
 abstract i b (Free x)
@@ -269,6 +285,8 @@ abstract _ _ (Fun f) = Fun f
 abstract i b (Case t bs) = Case (abstract i b t) (map (\(Branch c xs t') -> (Branch c xs (abstract (i + length xs) b t'))) bs)
 abstract i b (Let x t u) = Let x (abstract i b t) (abstract (i + 1) b u)
 abstract i b (Where t ds) = Where (abstract i b t) (map (second (abstract i b)) ds)
+abstract i b (Tuple t t') = Tuple (abstract i b t) (abstract i b t')
+abstract i b (TupleLet x x' t t') = TupleLet x x' (abstract i b t) (abstract (i + 2) b t')
 
 rename :: [String] -> String -> String
 rename xs x
