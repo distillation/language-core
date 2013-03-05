@@ -71,6 +71,9 @@ rebuildDataCons = map rebuildDataCon
 
 rebuildDataCon :: DataType -> HsDecl
 rebuildDataCon (DataType name vars cons (Just context) (Just qnames)) = HsDataDecl (SrcLoc "" 0 0) context (HsIdent name) (map HsIdent vars) (rebuildConDecls cons) qnames
+rebuildDataCon (DataType name vars cons Nothing (Just qnames)) = HsDataDecl (SrcLoc "" 0 0) [] (HsIdent name) (map HsIdent vars) (rebuildConDecls cons) qnames
+rebuildDataCon (DataType name vars cons (Just context) Nothing) = HsDataDecl (SrcLoc "" 0 0) context (HsIdent name) (map HsIdent vars) (rebuildConDecls cons) []
+rebuildDataCon (DataType name vars cons Nothing Nothing) = HsDataDecl (SrcLoc "" 0 0) [] (HsIdent name) (map HsIdent vars) (rebuildConDecls cons) []
 
 rebuildConDecls :: [(String, [DataType])] -> [HsConDecl]
 rebuildConDecls = map rebuildConDecl
@@ -82,9 +85,10 @@ rebuildBangTypes :: [DataType] -> [HsBangType]
 rebuildBangTypes = map rebuildBangType
 
 rebuildBangType :: DataType -> HsBangType
-rebuildBangType (DataType name [] [] Nothing Nothing) = HsUnBangedTy (HsTyVar (HsIdent name))
-rebuildBangType (DataType cname (vname:[]) [] Nothing Nothing) = HsUnBangedTy (HsTyApp (HsTyCon (UnQual (HsIdent cname))) (HsTyVar (HsIdent vname)))
-rebuildBangType (DataType cname (vname:vname':[]) [] Nothing Nothing) = HsUnBangedTy (HsTyApp (HsTyApp (HsTyCon (UnQual (HsIdent cname))) (HsTyVar (HsIdent vname))) (HsTyVar (HsIdent vname')))
+rebuildBangType (DataType name [] _ _ _) = HsUnBangedTy (HsTyVar (HsIdent name))
+rebuildBangType (DataType cname (vname:[]) _ _ _) = HsUnBangedTy (HsTyApp (HsTyCon (UnQual (HsIdent cname))) (HsTyVar (HsIdent vname)))
+rebuildBangType (DataType cname (vname:vname':[]) _ _ _) = HsUnBangedTy (HsTyApp (HsTyApp (HsTyCon (UnQual (HsIdent cname))) (HsTyVar (HsIdent vname))) (HsTyVar (HsIdent vname')))
+rebuildBangType _ = error "Attempting to rebuild malformed data type."
 
 rebuildDecls :: [Function] -> [HsDecl]
 rebuildDecls = map rebuildDecl
