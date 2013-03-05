@@ -1,5 +1,8 @@
 module Test where
 
+data List a = Nil
+            | Cons a (List a)
+
 main = \xs -> sumList xs
 
 sumList = \xs -> case xs of
