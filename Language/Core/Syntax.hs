@@ -137,7 +137,10 @@ rebuildExp (Case e bs) = HsCase (rebuildExp e) (rebuildAlts bs)
 rebuildExp (Where e bs) = HsLet (rebuildDecls bs) (rebuildExp e)
 rebuildExp (Bound i) = HsVar (UnQual (HsIdent (show i)))
 rebuildExp (Tuple e e') = HsTuple [rebuildExp e, rebuildExp e']
-rebuildExp (TupleLet x x' e e') = HsLet [HsPatBind (SrcLoc "" 0 0) (HsPTuple [HsPVar (HsIdent x), HsPVar (HsIdent x')]) (HsUnGuardedRhs (rebuildExp e)) []] (rebuildExp (subst 0 (Free x) (subst 0 (Free x') e')))
+rebuildExp (TupleLet x x' e e') = 
+    let v = rename (free e') x
+        v' = rename (v:free e') x'
+    in HsLet [HsPatBind (SrcLoc "" 0 0) (HsPTuple [HsPVar (HsIdent v), HsPVar (HsIdent v')]) (HsUnGuardedRhs (rebuildExp e)) []] (rebuildExp (subst 0 (Free v) (subst 0 (Free v') e')))
 
 rebuildInt :: Term -> HsExp
 rebuildInt e = HsLit (HsInt (rebuildInt' e))
@@ -156,6 +159,12 @@ rebuildAlts :: [Branch] -> [HsAlt]
 rebuildAlts = map rebuildAlt
 
 rebuildAlt :: Branch -> HsAlt
+rebuildAlt (Branch "ConsTransformer" args@(x:x':[]) e) = -- only allow for cons of size 2 for parallelization
+    let fv = foldr (\x fv' -> rename fv' x:fv') (free e) args
+        args'@(v:v':[]) = take (length args) fv
+        pat = HsPParen (HsPInfixApp (HsPVar (HsIdent v)) (Special HsCons) (HsPVar (HsIdent v')))
+        body = foldr (\x t -> subst 0 (Free x) t) e args'
+    in HsAlt (SrcLoc "" 0 0) pat (HsUnGuardedAlt (rebuildExp body)) []
 rebuildAlt (Branch c args e) =
     let fv = foldr (\x fv' -> rename fv' x:fv') (free e) args
         args' = take (length args) fv
