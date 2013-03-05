@@ -213,6 +213,11 @@ parseHsAlt (HsAlt _ (HsPApp qn args) alt []) =
         consArgs = map parseHsPatToVar args
         body = parseHsGuardedAlts alt
     in Branch cons consArgs (foldl (flip (abstract 0)) body consArgs)
+parseHsAlt (HsAlt _ (HsPInfixApp (HsPVar v) (Special HsCons) (HsPVar v')) alt []) =
+    let x = parseHsName v
+        x' = parseHsName v'
+        body = parseHsGuardedAlts alt
+    in Branch "ConsTransformer" [x, x'] (abstract 0 x' (abstract 0 x body))
 parseHsAlt a = error $ "Unexpected case pattern: " ++ show a
     
 -- Only allow unguarded alts
