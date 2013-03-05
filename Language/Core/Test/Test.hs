@@ -3,7 +3,8 @@ module Test where
 data List a = Nil
             | Cons a a (List a)
 
-main = \xs -> sumList xs
+main = \xs -> case xs of
+    (y:ys) -> sumList ys
 
 sumList = \xs -> case xs of
     Empty -> (x:xs)

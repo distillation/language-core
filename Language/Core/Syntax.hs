@@ -159,6 +159,13 @@ rebuildAlts :: [Branch] -> [HsAlt]
 rebuildAlts = map rebuildAlt
 
 rebuildAlt :: Branch -> HsAlt
+rebuildAlt (Branch "NilTransformer" [] e) = HsAlt (SrcLoc "" 0 0) (HsPList []) (HsUnGuardedAlt (rebuildExp e)) []
+rebuildAlt (Branch "ConsTransformer" args@(x:[]) e) = -- only allow for cons of size 1 for parallelization
+    let fv = foldr (\x fv' -> rename fv' x:fv') (free e) args
+        v = rename (free e) x
+        pat = HsPParen (HsPInfixApp (HsPVar (HsIdent v)) (Special HsCons) (HsPList []))
+        body = subst 0 (Free v) e
+    in HsAlt (SrcLoc "" 0 0) pat (HsUnGuardedAlt (rebuildExp body)) []
 rebuildAlt (Branch "ConsTransformer" args@(x:x':[]) e) = -- only allow for cons of size 2 for parallelization
     let fv = foldr (\x fv' -> rename fv' x:fv') (free e) args
         args'@(v:v':[]) = take (length args) fv

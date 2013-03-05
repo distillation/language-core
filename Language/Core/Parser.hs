@@ -208,16 +208,22 @@ parseHsAlts = map parseHsAlt
 -- Only allow constructor patterns with variable args and no local function definitions
 parseHsAlt :: HsAlt -> Branch
 parseHsAlt (HsAlt _ (HsPApp qn args) alt []) =
-    let
-        cons = parseHsQName qn
+    let cons = parseHsQName qn
         consArgs = map parseHsPatToVar args
         body = parseHsGuardedAlts alt
     in Branch cons consArgs (foldl (flip (abstract 0)) body consArgs)
-parseHsAlt (HsAlt _ (HsPInfixApp (HsPVar v) (Special HsCons) (HsPVar v')) alt []) =
+parseHsAlt (HsAlt _ (HsPList []) alt []) =
+    let body = parseHsGuardedAlts alt
+    in Branch "NilTransformer" [] body
+parseHsAlt (HsAlt _ (HsPParen (HsPInfixApp (HsPVar v) (Special HsCons) (HsPVar v'))) alt []) =
     let x = parseHsName v
         x' = parseHsName v'
         body = parseHsGuardedAlts alt
     in Branch "ConsTransformer" [x, x'] (abstract 0 x' (abstract 0 x body))
+parseHsAlt (HsAlt _ (HsPParen (HsPInfixApp (HsPVar v) (Special HsCons) (HsPList []))) alt []) =
+    let x = parseHsName v
+        body = parseHsGuardedAlts alt
+    in Branch "ConsTransformer" [x] (abstract 0 x body)
 parseHsAlt a = error $ "Unexpected case pattern: " ++ show a
     
 -- Only allow unguarded alts
