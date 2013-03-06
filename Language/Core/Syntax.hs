@@ -15,11 +15,10 @@ module Language.Core.Syntax(
     rename
 ) where
     
-import Language.Haskell.Syntax
-import Language.Haskell.Pretty
+import qualified Language.Haskell.Exts as LHE
 import Control.Arrow(second)
 
-data Program = Program Term [DataType] Module (Maybe [HsExportSpec]) [HsImportDecl]
+data Program = Program Term [DataType] LHE.ModuleName [LHE.ModulePragma] (Maybe LHE.WarningText) (Maybe [LHE.ExportSpec]) [LHE.ImportDecl]
 
 type Function = (String, Term)
 type DataCon = (String, [DataType])  
@@ -38,7 +37,7 @@ data Term = Free String
           
 data Branch = Branch String [String] Term
 
-data DataType = DataType String [String] [DataCon] (Maybe HsContext) (Maybe [HsQName]) deriving Show
+data DataType = DataType String [String] [DataCon] LHE.DataOrNew (Maybe LHE.Context) [LHE.Deriving] deriving Show
          
 instance Eq Term where
    (==) (Free v) (Free v') = v == v'
@@ -59,91 +58,89 @@ instance Eq Branch where
     (==) (Branch _ _ e) (Branch _ _ e') = e == e'
             
 instance Show Program where
-    show p = prettyPrint (rebuildModule p)
+    show p = LHE.prettyPrint (rebuildModule p)
     
 instance Show Term where
-    show t = prettyPrint (rebuildExp t)
+    show t = LHE.prettyPrint (rebuildExp t)
 
-rebuildModule :: Program -> HsModule    
-rebuildModule (Program (Where main funcs) cons mn es is) = HsModule (SrcLoc "" 0 0) mn es is (rebuildDataCons cons ++ rebuildDecls (("main",main):funcs))
-rebuildModule (Program e cons mn es is) = HsModule (SrcLoc "" 0 0) mn es is (rebuildDataCons cons ++ rebuildDecls [("main", e)])
+rebuildModule :: Program -> LHE.Module    
+rebuildModule (Program (Where main funcs) cons mn ps wn es is) = LHE.Module (LHE.SrcLoc "" 0 0) mn ps wn es is (rebuildDataCons cons ++ rebuildDecls (("main",main):funcs))
+rebuildModule (Program e cons mn ps wn es is) = LHE.Module (LHE.SrcLoc "" 0 0) mn ps wn es is (rebuildDataCons cons ++ rebuildDecls [("main", e)])
 
-rebuildDataCons :: [DataType] -> [HsDecl]
+rebuildDataCons :: [DataType] -> [LHE.Decl]
 rebuildDataCons = map rebuildDataCon
 
-rebuildDataCon :: DataType -> HsDecl
-rebuildDataCon (DataType name vars cons (Just context) (Just qnames)) = HsDataDecl (SrcLoc "" 0 0) context (HsIdent name) (map HsIdent vars) (rebuildConDecls cons) qnames
-rebuildDataCon (DataType name vars cons Nothing (Just qnames)) = HsDataDecl (SrcLoc "" 0 0) [] (HsIdent name) (map HsIdent vars) (rebuildConDecls cons) qnames
-rebuildDataCon (DataType name vars cons (Just context) Nothing) = HsDataDecl (SrcLoc "" 0 0) context (HsIdent name) (map HsIdent vars) (rebuildConDecls cons) []
-rebuildDataCon (DataType name vars cons Nothing Nothing) = HsDataDecl (SrcLoc "" 0 0) [] (HsIdent name) (map HsIdent vars) (rebuildConDecls cons) []
+rebuildDataCon :: DataType -> LHE.Decl
+rebuildDataCon (DataType name vars cons don (Just context) derive) = LHE.DataDecl (LHE.SrcLoc "" 0 0) don context (LHE.Ident name) (map (LHE.UnkindedVar . LHE.Ident) vars) (rebuildConDecls cons) derive
+rebuildDataCon (DataType name vars cons don Nothing derive) = LHE.DataDecl (LHE.SrcLoc "" 0 0) don [] (LHE.Ident name) (map (LHE.UnkindedVar . LHE.Ident) vars) (rebuildConDecls cons) derive
 
-rebuildConDecls :: [(String, [DataType])] -> [HsConDecl]
+rebuildConDecls :: [(String, [DataType])] -> [LHE.QualConDecl]
 rebuildConDecls = map rebuildConDecl
 
-rebuildConDecl :: (String, [DataType]) -> HsConDecl
-rebuildConDecl (name, btypes) = HsConDecl (SrcLoc "" 0 0)(HsIdent name) (rebuildBangTypes btypes)
+rebuildConDecl :: (String, [DataType]) -> LHE.QualConDecl
+rebuildConDecl (name, btypes) = LHE.QualConDecl (LHE.SrcLoc "" 0 0) [] [] (LHE.ConDecl (LHE.Ident name) (rebuildBangTypes btypes))
 
-rebuildBangTypes :: [DataType] -> [HsBangType]
+rebuildBangTypes :: [DataType] -> [LHE.BangType]
 rebuildBangTypes = map rebuildBangType
 
-rebuildBangType :: DataType -> HsBangType
-rebuildBangType (DataType name [] _ _ _) = HsUnBangedTy (HsTyVar (HsIdent name))
-rebuildBangType (DataType cname (vname:[]) _ _ _) = HsUnBangedTy (HsTyApp (HsTyCon (UnQual (HsIdent cname))) (HsTyVar (HsIdent vname)))
-rebuildBangType (DataType cname (vname:vname':[]) _ _ _) = HsUnBangedTy (HsTyApp (HsTyApp (HsTyCon (UnQual (HsIdent cname))) (HsTyVar (HsIdent vname))) (HsTyVar (HsIdent vname')))
+rebuildBangType :: DataType -> LHE.BangType
+rebuildBangType (DataType name [] _ _ _ _) = LHE.UnBangedTy (LHE.TyVar (LHE.Ident name))
+rebuildBangType (DataType cname (vname:[]) _ _ _ _) = LHE.UnBangedTy (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident cname))) (LHE.TyVar (LHE.Ident vname)))
+rebuildBangType (DataType cname (vname:vname':[]) _ _ _ _) = LHE.UnBangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident cname))) (LHE.TyVar (LHE.Ident vname))) (LHE.TyVar (LHE.Ident vname')))
 rebuildBangType _ = error "Attempting to rebuild malformed data type."
 
-rebuildDecls :: [Function] -> [HsDecl]
+rebuildDecls :: [Function] -> [LHE.Decl]
 rebuildDecls = map rebuildDecl
 
-rebuildDecl :: Function -> HsDecl
-rebuildDecl (name, body) = HsFunBind [HsMatch (SrcLoc "" 0 0) (HsIdent name) [] (HsUnGuardedRhs (rebuildExp body)) []]
+rebuildDecl :: Function -> LHE.Decl
+rebuildDecl (name, body) = LHE.FunBind [LHE.Match (LHE.SrcLoc "" 0 0) (LHE.Ident name) [] Nothing (LHE.UnGuardedRhs (rebuildExp body)) (LHE.BDecls [])]
 
-rebuildExp :: Term -> HsExp
-rebuildExp (Free v) = HsVar (UnQual (HsIdent v))
+rebuildExp :: Term -> LHE.Exp
+rebuildExp (Free v) = LHE.Var (LHE.UnQual (LHE.Ident v))
 rebuildExp (Lambda v e) =
     let v' = rename (free e) v
-    in HsLambda (SrcLoc "" 0 0) [HsPVar (HsIdent v')] (rebuildExp (subst 0 (Free v') e))
+    in LHE.Lambda (LHE.SrcLoc "" 0 0) [LHE.PVar (LHE.Ident v')] (rebuildExp (subst 0 (Free v') e))
 rebuildExp (Let v e e') = 
     let v' = rename (free e') v
-    in HsLet [HsFunBind [HsMatch (SrcLoc "" 0 0) (HsIdent v') [] (HsUnGuardedRhs (rebuildExp e)) []]] (rebuildExp (subst 0 (Free v') e'))
-rebuildExp (Fun v) = HsVar (UnQual (HsIdent v))
+    in LHE.Let (LHE.BDecls [LHE.FunBind [LHE.Match (LHE.SrcLoc "" 0 0) (LHE.Ident v') [] Nothing (LHE.UnGuardedRhs (rebuildExp e)) (LHE.BDecls [])]]) (rebuildExp (subst 0 (Free v') e'))
+rebuildExp (Fun v) = LHE.Var (LHE.UnQual (LHE.Ident v))
 rebuildExp e@(Con "S" _) = rebuildInt e
-rebuildExp (Con "Z" _) = HsLit (HsInt 0)
-rebuildExp (Con "CharTransformer" (Con c []:[])) = HsLit (HsChar (head c))
-rebuildExp (Con "StringTransformer" [e]) = HsLit (HsString (rebuildString e))
-rebuildExp (Con "NilTransformer" []) = HsCon (Special HsListCon)
+rebuildExp (Con "Z" _) = LHE.Lit (LHE.Int 0)
+rebuildExp (Con "CharTransformer" (Con c []:[])) = LHE.Lit (LHE.Char (head c))
+rebuildExp (Con "StringTransformer" [e]) = LHE.Lit (LHE.String (rebuildString e))
+rebuildExp (Con "NilTransformer" []) = LHE.Con (LHE.Special LHE.ListCon)
 rebuildExp (Con "ConsTransformer" es) = rebuildCon es
 rebuildExp (Con c es) = 
     let
-        cons = HsCon (UnQual (HsIdent c))
+        cons = LHE.Con (LHE.UnQual (LHE.Ident c))
         args = map rebuildExp es
-    in foldl HsApp cons args
+    in foldl LHE.App cons args
 rebuildExp (Apply (Apply (Fun f) x@(Free _)) y@(Free _))
- | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = HsInfixApp (rebuildExp x) (HsQVarOp (UnQual (HsIdent f))) (rebuildExp y)
+ | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = LHE.InfixApp (rebuildExp x) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (rebuildExp y)
 rebuildExp (Apply (Apply (Fun f) x@(Free _)) y)
- | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = HsInfixApp (rebuildExp x) (HsQVarOp (UnQual (HsIdent f))) (HsParen (rebuildExp y))
+ | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = LHE.InfixApp (rebuildExp x) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (LHE.Paren (rebuildExp y))
 rebuildExp (Apply (Apply (Fun f) x) y@(Free _))
- | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = HsInfixApp (HsParen (rebuildExp x)) (HsQVarOp (UnQual (HsIdent f))) (rebuildExp y)
+ | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = LHE.InfixApp (LHE.Paren (rebuildExp x)) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (rebuildExp y)
 rebuildExp (Apply (Apply (Fun f) x@(Fun _)) y@(Fun _))
- | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = HsInfixApp (rebuildExp x) (HsQVarOp (UnQual (HsIdent f))) (rebuildExp y)
+ | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = LHE.InfixApp (rebuildExp x) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (rebuildExp y)
 rebuildExp (Apply (Apply (Fun f) x@(Fun _)) y)
- | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = HsInfixApp (rebuildExp x) (HsQVarOp (UnQual (HsIdent f))) (HsParen (rebuildExp y))
+ | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = LHE.InfixApp (rebuildExp x) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (LHE.Paren (rebuildExp y))
 rebuildExp (Apply (Apply (Fun f) x) y@(Fun _))
- | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = HsInfixApp (HsParen (rebuildExp x)) (HsQVarOp (UnQual (HsIdent f))) (rebuildExp y)
+ | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = LHE.InfixApp (LHE.Paren (rebuildExp x)) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (rebuildExp y)
 rebuildExp (Apply (Apply (Fun f) x) y)
- | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = HsInfixApp (HsParen (rebuildExp x)) (HsQVarOp (UnQual (HsIdent f))) (HsParen (rebuildExp y))
-rebuildExp (Apply e e') = HsApp (rebuildExp e) (rebuildExp e')
-rebuildExp (Case e bs) = HsCase (rebuildExp e) (rebuildAlts bs)
-rebuildExp (Where e bs) = HsLet (rebuildDecls bs) (rebuildExp e)
-rebuildExp (Bound i) = HsVar (UnQual (HsIdent (show i)))
-rebuildExp (Tuple e e') = HsTuple [rebuildExp e, rebuildExp e']
+ | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = LHE.InfixApp (LHE.Paren (rebuildExp x)) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (LHE.Paren (rebuildExp y))
+rebuildExp (Apply e e') = LHE.App (rebuildExp e) (rebuildExp e')
+rebuildExp (Case e bs) = LHE.Case (rebuildExp e) (rebuildAlts bs)
+rebuildExp (Where e bs) = LHE.Let (LHE.BDecls (rebuildDecls bs)) (rebuildExp e)
+rebuildExp (Bound i) = LHE.Var (LHE.UnQual (LHE.Ident (show i)))
+rebuildExp (Tuple e e') = LHE.Tuple [rebuildExp e, rebuildExp e']
 rebuildExp (TupleLet x x' e e') = 
     let v = rename (free e') x
         v' = rename (v:free e') x'
-    in HsLet [HsPatBind (SrcLoc "" 0 0) (HsPTuple [HsPVar (HsIdent v), HsPVar (HsIdent v')]) (HsUnGuardedRhs (rebuildExp e)) []] (rebuildExp (subst 0 (Free v) (subst 0 (Free v') e')))
+    in LHE.Let (LHE.BDecls [LHE.PatBind (LHE.SrcLoc "" 0 0) (LHE.PTuple [LHE.PVar (LHE.Ident v), LHE.PVar (LHE.Ident v')]) Nothing (LHE.UnGuardedRhs (rebuildExp e)) (LHE.BDecls [])]) (rebuildExp (subst 0 (Free v) (subst 0 (Free v') e')))
 
-rebuildInt :: Term -> HsExp
-rebuildInt e = HsLit (HsInt (rebuildInt' e))
+rebuildInt :: Term -> LHE.Exp
+rebuildInt e = LHE.Lit (LHE.Int (rebuildInt' e))
 
 rebuildInt' :: Term -> Integer
 rebuildInt' (Con "Z" _) = 0
@@ -155,37 +152,36 @@ rebuildString (Con c []) = c
 rebuildString (Con c (e:[])) = c ++ rebuildString e
 rebuildString _ = error "Attempting to rebuild non-String as String"
 
-rebuildAlts :: [Branch] -> [HsAlt]
+rebuildAlts :: [Branch] -> [LHE.Alt]
 rebuildAlts = map rebuildAlt
 
-rebuildAlt :: Branch -> HsAlt
-rebuildAlt (Branch "NilTransformer" [] e) = HsAlt (SrcLoc "" 0 0) (HsPList []) (HsUnGuardedAlt (rebuildExp e)) []
-rebuildAlt (Branch "ConsTransformer" args@(x:[]) e) = -- only allow for cons of size 1 for parallelization
-    let fv = foldr (\x fv' -> rename fv' x:fv') (free e) args
-        v = rename (free e) x
-        pat = HsPParen (HsPInfixApp (HsPVar (HsIdent v)) (Special HsCons) (HsPList []))
+rebuildAlt :: Branch -> LHE.Alt
+rebuildAlt (Branch "NilTransformer" [] e) = LHE.Alt (LHE.SrcLoc "" 0 0) (LHE.PList []) (LHE.UnGuardedAlt (rebuildExp e)) (LHE.BDecls [])
+rebuildAlt (Branch "ConsTransformer" (x:[]) e) = -- only allow for cons of size 1 for parallelization
+    let v = rename (free e) x
+        pat = LHE.PParen (LHE.PInfixApp (LHE.PVar (LHE.Ident v)) (LHE.Special LHE.Cons) (LHE.PList []))
         body = subst 0 (Free v) e
-    in HsAlt (SrcLoc "" 0 0) pat (HsUnGuardedAlt (rebuildExp body)) []
-rebuildAlt (Branch "ConsTransformer" args@(x:x':[]) e) = -- only allow for cons of size 2 for parallelization
+    in LHE.Alt (LHE.SrcLoc "" 0 0) pat (LHE.UnGuardedAlt (rebuildExp body)) (LHE.BDecls [])
+rebuildAlt (Branch "ConsTransformer" args@(_:_:[]) e) = -- only allow for cons of size 2 for parallelization
     let fv = foldr (\x fv' -> rename fv' x:fv') (free e) args
         args'@(v:v':[]) = take (length args) fv
-        pat = HsPParen (HsPInfixApp (HsPVar (HsIdent v)) (Special HsCons) (HsPVar (HsIdent v')))
+        pat = LHE.PParen (LHE.PInfixApp (LHE.PVar (LHE.Ident v)) (LHE.Special LHE.Cons) (LHE.PVar (LHE.Ident v')))
         body = foldr (\x t -> subst 0 (Free x) t) e args'
-    in HsAlt (SrcLoc "" 0 0) pat (HsUnGuardedAlt (rebuildExp body)) []
+    in LHE.Alt (LHE.SrcLoc "" 0 0) pat (LHE.UnGuardedAlt (rebuildExp body)) (LHE.BDecls [])
 rebuildAlt (Branch c args e) =
     let fv = foldr (\x fv' -> rename fv' x:fv') (free e) args
         args' = take (length args) fv
         e' = foldr (\x t -> subst 0 (Free x) t) e args'
-    in HsAlt (SrcLoc "" 0 0) (HsPApp (UnQual (HsIdent c)) (map (HsPVar . HsIdent) args')) (HsUnGuardedAlt (rebuildExp e')) []
+    in LHE.Alt (LHE.SrcLoc "" 0 0) (LHE.PApp (LHE.UnQual (LHE.Ident c)) (map (LHE.PVar . LHE.Ident) args')) (LHE.UnGuardedAlt (rebuildExp e')) (LHE.BDecls [])
 
-rebuildCon :: [Term] -> HsExp
-rebuildCon (e:[]) = HsParen (HsInfixApp (rebuildExp e) (HsQConOp (Special HsCons)) (HsCon (Special HsListCon)))
+rebuildCon :: [Term] -> LHE.Exp
+rebuildCon (e:[]) = LHE.Paren (LHE.InfixApp (rebuildExp e) (LHE.QConOp (LHE.Special LHE.Cons)) (LHE.Con (LHE.Special LHE.ListCon)))
 rebuildCon es = rebuildCon' es
 
-rebuildCon' :: [Term] -> HsExp
-rebuildCon' (Con "NilTransformer" []:[]) = HsCon (Special HsListCon)
+rebuildCon' :: [Term] -> LHE.Exp
+rebuildCon' (Con "NilTransformer" []:[]) = LHE.Con (LHE.Special LHE.ListCon)
 rebuildCon' (e:[]) = rebuildExp e
-rebuildCon' (e:es) = HsParen (HsInfixApp (rebuildExp e) (HsQConOp (Special HsCons)) (rebuildCon' es))
+rebuildCon' (e:es) = LHE.Paren (LHE.InfixApp (rebuildExp e) (LHE.QConOp (LHE.Special LHE.Cons)) (rebuildCon' es))
 rebuildCon' [] = error "Rebuilding empty list."
 
 match :: Term -> Term -> Bool
