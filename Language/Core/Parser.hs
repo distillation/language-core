@@ -156,10 +156,19 @@ parseHsExp (HsCase e alts) = Case (parseHsExp e) (parseHsAlts alts)
 parseHsExp (HsList es) = parseHsList es
 parseHsExp (HsParen e) = parseHsExp e
 parseHsExp (HsIf c t e) = Case (parseHsExp c) [Branch "True" [] (parseHsExp t), Branch "False" [] (parseHsExp e)]
+parseHsExp (HsLet [HsPatBind _ (HsPTuple [HsPVar (HsIdent x), HsPVar (HsIdent x')]) rhs bs] e) =
+    let
+        bindings = parseHsDecls bs
+        body = abstract 0 x' (abstract 0 x (parseHsExp e))
+        abstraction = parseHsRhs rhs
+    in case length bindings of
+        0 -> TupleLet x x' abstraction body
+        _ -> Where (TupleLet x x' abstraction body) bindings
 parseHsExp (HsLet bs e) =
     let bindings = parseHsDecls bs
         body = parseHsExp e
     in foldl (\f' (v, f) -> Let v f (abstract 0 v f')) body bindings
+parseHsExp (HsTuple (e:e':[])) = Tuple (parseHsExp e) (parseHsExp e')
 parseHsExp e = error $ "Unallowed expression type: " ++ show e
 
 parseHsLit :: HsLiteral -> Term
@@ -199,11 +208,22 @@ parseHsAlts = map parseHsAlt
 -- Only allow constructor patterns with variable args and no local function definitions
 parseHsAlt :: HsAlt -> Branch
 parseHsAlt (HsAlt _ (HsPApp qn args) alt []) =
-    let
-        cons = parseHsQName qn
+    let cons = parseHsQName qn
         consArgs = map parseHsPatToVar args
         body = parseHsGuardedAlts alt
     in Branch cons consArgs (foldl (flip (abstract 0)) body consArgs)
+parseHsAlt (HsAlt _ (HsPList []) alt []) =
+    let body = parseHsGuardedAlts alt
+    in Branch "NilTransformer" [] body
+parseHsAlt (HsAlt _ (HsPParen (HsPInfixApp (HsPVar v) (Special HsCons) (HsPVar v'))) alt []) =
+    let x = parseHsName v
+        x' = parseHsName v'
+        body = parseHsGuardedAlts alt
+    in Branch "ConsTransformer" [x, x'] (abstract 0 x' (abstract 0 x body))
+parseHsAlt (HsAlt _ (HsPParen (HsPInfixApp (HsPVar v) (Special HsCons) (HsPList []))) alt []) =
+    let x = parseHsName v
+        body = parseHsGuardedAlts alt
+    in Branch "ConsTransformer" [x] (abstract 0 x body)
 parseHsAlt a = error $ "Unexpected case pattern: " ++ show a
     
 -- Only allow unguarded alts
@@ -235,3 +255,5 @@ fixFunctions (Where e locals) funcNames =
     let (names, _) = unzip locals
         funcNames' = nub (names ++ funcNames)
     in Where (fixFunctions e funcNames') (map (\(n, b) -> (n, fixFunctions b funcNames')) locals)
+fixFunctions (Tuple e e') funcNames = Tuple (fixFunctions e funcNames) (fixFunctions e' funcNames)
+fixFunctions (TupleLet x x' e e') funcNames = TupleLet x x' (fixFunctions e funcNames) (fixFunctions e' funcNames)
