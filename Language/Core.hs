@@ -7,7 +7,7 @@ module Language.Core(
     DataType(DataType),
     parseFile,
     parseString,
-    parseHsExp,
+    parseExp,
     free,
     bound,
     funs,

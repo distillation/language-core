@@ -1,7 +1,7 @@
 module Language.Core.Parser(
     parseFile,
     parseString,
-    parseHsExp
+    parseExp
 ) where
 
 import qualified Language.Haskell.Exts as LHE
@@ -15,51 +15,51 @@ parseFile file = do
 
 parseString :: String -> Program
 parseString s = case LHE.parseModule s of
-    (LHE.ParseOk parse) -> parseHsModule parse
+    (LHE.ParseOk parse) -> parseModule parse
     err -> error $ show err
 
-parseHsModule :: LHE.Module -> Program
-parseHsModule (LHE.Module _ mn pr wn es is ds) = 
+parseModule :: LHE.Module -> Program
+parseModule (LHE.Module _ mn pr wn es is ds) = 
     let
-        funcs = parseHsDecls ds
+        funcs = parseDecls ds
         main = case find (\f -> fst f == "main") funcs of
             Nothing -> error "No main function defined."
             Just f -> snd f
-        cons = parseHsCons ds
+        cons = parseCons ds
     in Program (fixFunctions (Where main (delete ("main", main) funcs)) ["main"]) cons mn pr wn es is
  
-parseHsDecls :: [LHE.Decl] -> [Function]   
-parseHsDecls ds = map parseHsDecl (filter hsDeclIsFunc ds)
+parseDecls :: [LHE.Decl] -> [Function]   
+parseDecls ds = map parseDecl (filter hsDeclIsFunc ds)
 
-parseHsCons :: [LHE.Decl] -> [DataType]
-parseHsCons ds = map parseHsDataCon (filter hsDeclIsDataCon ds)
+parseCons :: [LHE.Decl] -> [DataType]
+parseCons ds = map parseDataCon (filter hsDeclIsDataCon ds)
 
-parseHsDataCon :: LHE.Decl -> DataType
-parseHsDataCon (LHE.DataDecl _ don con name vars cons derive) = DataType (parseHsName name) (map parseTyVarBind vars) (map parseQualConDecl cons) don (Just con) derive
-parseHsDataCon d = error ("Attempting to parse non data decl as data type: " ++ show d)
+parseDataCon :: LHE.Decl -> DataType
+parseDataCon (LHE.DataDecl _ don con name vars cons derive) = DataType (parseName name) (map parseTyVarBind vars) (map parseQualConDecl cons) don (Just con) derive
+parseDataCon d = error ("Attempting to parse non data decl as data type: " ++ show d)
 
 parseQualConDecl :: LHE.QualConDecl -> (String, [DataType])
-parseQualConDecl (LHE.QualConDecl _ _ _ con) = parseHsConDecl con
+parseQualConDecl (LHE.QualConDecl _ _ _ con) = parseConDecl con
 
 parseTyVarBind :: LHE.TyVarBind -> String
-parseTyVarBind (LHE.UnkindedVar n) = parseHsName n
+parseTyVarBind (LHE.UnkindedVar n) = parseName n
 parseTyVarBind t = error ("Kinded type variables are not supported: " ++ show t)
 
-parseHsConDecl :: LHE.ConDecl -> (String, [DataType])
-parseHsConDecl (LHE.ConDecl name bangs) = (parseHsName name, map parseHsBangType bangs)
-parseHsConDecl d = error ("Attempting to parse disallowed constructor decl as data type: " ++ show d)
+parseConDecl :: LHE.ConDecl -> (String, [DataType])
+parseConDecl (LHE.ConDecl name bangs) = (parseName name, map parseBangType bangs)
+parseConDecl d = error ("Attempting to parse disallowed constructor decl as data type: " ++ show d)
 
-parseHsBangType :: LHE.BangType -> DataType
-parseHsBangType (LHE.BangedTy t) = parseHsType t
-parseHsBangType (LHE.UnBangedTy t) = parseHsType t
-parseHsBangType (LHE.UnpackedTy t) = error ("Types with the UNPACK directive are not supported: " ++ show t) 
+parseBangType :: LHE.BangType -> DataType
+parseBangType (LHE.BangedTy t) = parseType t
+parseBangType (LHE.UnBangedTy t) = parseType t
+parseBangType (LHE.UnpackedTy t) = error ("Types with the UNPACK directive are not supported: " ++ show t) 
 
-parseHsType :: LHE.Type -> DataType
-parseHsType (LHE.TyVar v) = DataType (parseHsName v) [] [] LHE.DataType Nothing []
-parseHsType (LHE.TyApp (LHE.TyCon v) (LHE.TyVar v')) = DataType (parseHsQName v) [parseHsName v'] [] LHE.DataType Nothing []
-parseHsType (LHE.TyApp (LHE.TyApp (LHE.TyCon v) (LHE.TyVar v')) (LHE.TyVar v'')) = DataType (parseHsQName v) [parseHsName v', parseHsName v''] [] LHE.DataType Nothing []
-parseHsType (LHE.TyParen t) = parseHsType t
-parseHsType t = error ("Attempting to parse disallowed type: " ++ show t)  
+parseType :: LHE.Type -> DataType
+parseType (LHE.TyVar v) = DataType (parseName v) [] [] LHE.DataType Nothing []
+parseType (LHE.TyApp (LHE.TyCon v) (LHE.TyVar v')) = DataType (parseQName v) [parseName v'] [] LHE.DataType Nothing []
+parseType (LHE.TyApp (LHE.TyApp (LHE.TyCon v) (LHE.TyVar v')) (LHE.TyVar v'')) = DataType (parseQName v) [parseName v', parseName v''] [] LHE.DataType Nothing []
+parseType (LHE.TyParen t) = parseType t
+parseType t = error ("Attempting to parse disallowed type: " ++ show t)  
 
 hsDeclIsFunc :: LHE.Decl -> Bool
 hsDeclIsFunc (LHE.FunBind{}) = True
@@ -71,123 +71,123 @@ hsDeclIsDataCon (LHE.DataDecl{}) = True
 hsDeclIsDataCon _ = False
 
 -- No multiple function definitions allowed
-parseHsDecl :: LHE.Decl -> Function
-parseHsDecl (LHE.FunBind [LHE.Match _ name pats _ rhs (LHE.BDecls decls)]) = -- Local definitions
+parseDecl :: LHE.Decl -> Function
+parseDecl (LHE.FunBind [LHE.Match _ name pats _ rhs (LHE.BDecls decls)]) = -- Local definitions
     let
-        functionName = parseHsName name
-        args = map parseHsPatToVar pats
-        body = parseHsRhs rhs
-        locals = parseHsDecls decls
+        functionName = parseName name
+        args = map parsePatToVar pats
+        body = parseRhs rhs
+        locals = parseDecls decls
         body' = case length decls of
             0 -> foldr (\v e -> Lambda v (abstract 0 v e)) body args
             _ -> foldr (\v e -> Lambda v (abstract 0 v e)) (Where body locals) args
     in (functionName, body')
-parseHsDecl (LHE.PatBind _ name _ rhs (LHE.BDecls decls)) = -- Local definitions
+parseDecl (LHE.PatBind _ name _ rhs (LHE.BDecls decls)) = -- Local definitions
     let
-        functionName = parseHsPatToVar name
-        body = parseHsRhs rhs
-        locals = parseHsDecls decls
+        functionName = parsePatToVar name
+        body = parseRhs rhs
+        locals = parseDecls decls
         body' = case length decls of
             0 -> body
             _ -> Where body locals
     in (functionName, body')
-parseHsDecl d = error $ "Attempting to parse invalid decls as function: " ++ show d
+parseDecl d = error $ "Attempting to parse invalid decls as function: " ++ show d
     
 -- Only allow variable names as function bound arguments or lambda variables
-parseHsPatToVar :: LHE.Pat -> String
-parseHsPatToVar (LHE.PVar n) = parseHsName n
-parseHsPatToVar p = error $ "Unexpection function patterns: " ++ show p
+parsePatToVar :: LHE.Pat -> String
+parsePatToVar (LHE.PVar n) = parseName n
+parsePatToVar p = error $ "Unexpection function patterns: " ++ show p
 
-parseHsRhs :: LHE.Rhs -> Term
-parseHsRhs (LHE.UnGuardedRhs e) = parseHsExp e
-parseHsRhs (LHE.GuardedRhss guards) = parseHsGuardedRhss guards
+parseRhs :: LHE.Rhs -> Term
+parseRhs (LHE.UnGuardedRhs e) = parseExp e
+parseRhs (LHE.GuardedRhss guards) = parseGuardedRhss guards
 
-parseHsGuardedRhss :: [LHE.GuardedRhs] -> Term
-parseHsGuardedRhss (LHE.GuardedRhs _ ((LHE.Qualifier e):[]) e':[]) = Case (parseHsExp e) [Branch "True" [] (parseHsExp e')]
-parseHsGuardedRhss (LHE.GuardedRhs _ ((LHE.Qualifier e):[]) e':gs) = Case (parseHsExp e) [Branch "True" [] (parseHsExp e'), Branch "False" [] (parseHsGuardedRhss gs)]
-parseHsGuardedRhss (LHE.GuardedRhs _ stmts _:_) = error ("Guards with statements are not supported: " ++ show stmts)
-parseHsGuardedRhss [] = error "Attempting to parse empty set of guarded rhs"
+parseGuardedRhss :: [LHE.GuardedRhs] -> Term
+parseGuardedRhss (LHE.GuardedRhs _ ((LHE.Qualifier e):[]) e':[]) = Case (parseExp e) [Branch "True" [] (parseExp e')]
+parseGuardedRhss (LHE.GuardedRhs _ ((LHE.Qualifier e):[]) e':gs) = Case (parseExp e) [Branch "True" [] (parseExp e'), Branch "False" [] (parseGuardedRhss gs)]
+parseGuardedRhss (LHE.GuardedRhs _ stmts _:_) = error ("Guards with statements are not supported: " ++ show stmts)
+parseGuardedRhss [] = error "Attempting to parse empty set of guarded rhs"
 
 parseSpecialCon :: LHE.SpecialCon -> String
 parseSpecialCon (LHE.ListCon) = "NilTransformer"
 parseSpecialCon (LHE.Cons) = "ConsTransformer"
 parseSpecialCon c = error $ "Unexpected special constructor: " ++ show c
 
-parseHsExp :: LHE.Exp -> Term
-parseHsExp (LHE.Var qn) = Free (parseHsQName qn)
-parseHsExp (LHE.Con (LHE.Special s)) = Con (parseSpecialCon s) []
-parseHsExp (LHE.Con qn) = Con (parseHsQName qn) []
-parseHsExp (LHE.Lit lit) = parseHsLit lit
-parseHsExp (LHE.InfixApp e o e')
- | parseHsQOp o == "NilTransformer" = Con "NilTransformer" []
- | parseHsQOp o == "ConsTransformer" = 
-     let es = gatherInfixConsArgs e ++ [parseHsExp e']
+parseExp :: LHE.Exp -> Term
+parseExp (LHE.Var qn) = Free (parseQName qn)
+parseExp (LHE.Con (LHE.Special s)) = Con (parseSpecialCon s) []
+parseExp (LHE.Con qn) = Con (parseQName qn) []
+parseExp (LHE.Lit lit) = parseLit lit
+parseExp (LHE.InfixApp e o e')
+ | parseQOp o == "NilTransformer" = Con "NilTransformer" []
+ | parseQOp o == "ConsTransformer" = 
+     let es = gatherInfixConsArgs e ++ [parseExp e']
      in buildCon es
- | otherwise = Apply (Apply (Free (parseHsQOp o)) (parseHsExp e)) (parseHsExp e')
+ | otherwise = Apply (Apply (Free (parseQOp o)) (parseExp e)) (parseExp e')
  where
      gatherInfixConsArgs f@(LHE.InfixApp g p g')
-      | parseHsQOp p == "NilTransformer" = [Con "NilTransformer" []]
-      | parseHsQOp p == "ConsTransformer" = gatherInfixConsArgs g ++ [parseHsExp g']
-      | otherwise = [parseHsExp f]
-     gatherInfixConsArgs f = [parseHsExp f]
+      | parseQOp p == "NilTransformer" = [Con "NilTransformer" []]
+      | parseQOp p == "ConsTransformer" = gatherInfixConsArgs g ++ [parseExp g']
+      | otherwise = [parseExp f]
+     gatherInfixConsArgs f = [parseExp f]
          
      buildCon (f:f':[]) = Con "ConsTransformer" [f, f']
      buildCon (f:fs) = Con "ConsTransformer" [f, buildCon fs]
      buildCon [] = error "Attempting to parse empty set of cons elements to ConsTransformer"
-parseHsExp app@(LHE.App e e')
- | isConApp app = Con (parseHsCon e) (parseHsConArgs e ++ [parseHsExp e'])
- | otherwise = Apply (parseHsExp e) (parseHsExp e')
+parseExp app@(LHE.App e e')
+ | isConApp app = Con (parseCon e) (parseConArgs e ++ [parseExp e'])
+ | otherwise = Apply (parseExp e) (parseExp e')
  where
      isConApp (LHE.App (LHE.Con _) _) = True
      isConApp (LHE.App f _) = isConApp f
      isConApp _ = False
      
-     parseHsCon (LHE.App (LHE.Con qn) _) = parseConsQName qn
-     parseHsCon (LHE.App f _) = parseHsCon f
-     parseHsCon (LHE.Con qn) = parseConsQName qn
-     parseHsCon f = error $ "Parsing unexpected expression as constructor: " ++ show f
+     parseCon (LHE.App (LHE.Con qn) _) = parseConsQName qn
+     parseCon (LHE.App f _) = parseCon f
+     parseCon (LHE.Con qn) = parseConsQName qn
+     parseCon f = error $ "Parsing unexpected expression as constructor: " ++ show f
      
-     parseConsQName (LHE.UnQual n) = parseHsName n
+     parseConsQName (LHE.UnQual n) = parseName n
      parseConsQName (LHE.Special LHE.ListCon) = "NilTransformer"
      parseConsQName (LHE.Special LHE.Cons) = "ConsTransformer"
      parseConsQName c = error $ "Unexpected constructor: " ++ show c
      
-     parseHsConArgs (LHE.App (LHE.Con _) f) = [parseHsExp f]
-     parseHsConArgs (LHE.App f f') =  parseHsConArgs f ++ [parseHsExp f'] 
-     parseHsConArgs (LHE.Con _) = []
-     parseHsConArgs f = [parseHsExp f]
-parseHsExp (LHE.Lambda _ pats e) =
+     parseConArgs (LHE.App (LHE.Con _) f) = [parseExp f]
+     parseConArgs (LHE.App f f') =  parseConArgs f ++ [parseExp f'] 
+     parseConArgs (LHE.Con _) = []
+     parseConArgs f = [parseExp f]
+parseExp (LHE.Lambda _ pats e) =
     let
-        lamVars = map parseHsPatToVar pats
-        body = parseHsExp e
+        lamVars = map parsePatToVar pats
+        body = parseExp e
     in foldr (\v e' -> Lambda v (abstract 0 v e')) body lamVars
-parseHsExp (LHE.Case e alts) = Case (parseHsExp e) (parseHsAlts alts)
-parseHsExp (LHE.List es) = parseHsList es
-parseHsExp (LHE.Paren e) = parseHsExp e
-parseHsExp (LHE.If c t e) = Case (parseHsExp c) [Branch "True" [] (parseHsExp t), Branch "False" [] (parseHsExp e)]
-parseHsExp (LHE.Let (LHE.BDecls [LHE.PatBind _ (LHE.PTuple [LHE.PVar (LHE.Ident x), LHE.PVar (LHE.Ident x')]) _ rhs (LHE.BDecls bs)]) e) =
+parseExp (LHE.Case e alts) = Case (parseExp e) (parseAlts alts)
+parseExp (LHE.List es) = parseList es
+parseExp (LHE.Paren e) = parseExp e
+parseExp (LHE.If c t e) = Case (parseExp c) [Branch "True" [] (parseExp t), Branch "False" [] (parseExp e)]
+parseExp (LHE.Let (LHE.BDecls [LHE.PatBind _ (LHE.PTuple [LHE.PVar (LHE.Ident x), LHE.PVar (LHE.Ident x')]) _ rhs (LHE.BDecls bs)]) e) =
     let
-        bindings = parseHsDecls bs
-        body = abstract 0 x' (abstract 0 x (parseHsExp e))
-        abstraction = parseHsRhs rhs
+        bindings = parseDecls bs
+        body = abstract 0 x' (abstract 0 x (parseExp e))
+        abstraction = parseRhs rhs
     in case length bindings of
         0 -> TupleLet x x' abstraction body
         _ -> Where (TupleLet x x' abstraction body) bindings
-parseHsExp (LHE.Let (LHE.BDecls bs) e) =
-    let bindings = parseHsDecls bs
-        body = parseHsExp e
+parseExp (LHE.Let (LHE.BDecls bs) e) =
+    let bindings = parseDecls bs
+        body = parseExp e
     in foldl (\f' (v, f) -> Let v f (abstract 0 v f')) body bindings
-parseHsExp (LHE.Tuple (e:e':[])) = Tuple (parseHsExp e) (parseHsExp e')
-parseHsExp e = error $ "Unallowed expression type: " ++ show e
+parseExp (LHE.Tuple (e:e':[])) = Tuple (parseExp e) (parseExp e')
+parseExp e = error $ "Unallowed expression type: " ++ show e
 
-parseHsLit :: LHE.Literal -> Term
-parseHsLit (LHE.Int i) = parseInt i
-parseHsLit (LHE.PrimInt i) = parseInt i
-parseHsLit (LHE.Char c) = Con "CharTransformer" [Con (c:"") []]
-parseHsLit (LHE.PrimChar c) = Con "CharTransformer" [Con (c:"") []]
-parseHsLit (LHE.String s) = Con "StringTransformer" [parseHsString s]
-parseHsLit (LHE.PrimString s) = Con "StringTransformer" [parseHsString s]
-parseHsLit l = error ("Unexpected floating point number: " ++ show l)
+parseLit :: LHE.Literal -> Term
+parseLit (LHE.Int i) = parseInt i
+parseLit (LHE.PrimInt i) = parseInt i
+parseLit (LHE.Char c) = Con "CharTransformer" [Con (c:"") []]
+parseLit (LHE.PrimChar c) = Con "CharTransformer" [Con (c:"") []]
+parseLit (LHE.String s) = Con "StringTransformer" [parseLitString s]
+parseLit (LHE.PrimString s) = Con "StringTransformer" [parseLitString s]
+parseLit l = error ("Unexpected floating point number: " ++ show l)
 
 parseInt :: Integer -> Term
 parseInt 0 = Con "Z" []
@@ -195,59 +195,59 @@ parseInt n
  | n < 0 = error ("Unexpected negative number" ++ show n)
  | otherwise = Con "S" [parseInt (n - 1)]
 
-parseHsString :: String -> Term
-parseHsString (c:[]) = Con (c:"") []
-parseHsString (c:cs) = Con (c:"") [parseHsString cs]
-parseHsString [] = error "Attempting to parse empty string as string"
+parseLitString :: String -> Term
+parseLitString (c:[]) = Con (c:"") []
+parseLitString (c:cs) = Con (c:"") [parseLitString cs]
+parseLitString [] = error "Attempting to parse empty string as string"
 
 -- Only allow functions/variables
-parseHsQOp :: LHE.QOp -> String
-parseHsQOp (LHE.QVarOp qn) = parseHsQName qn
-parseHsQOp (LHE.QConOp (LHE.Special LHE.ListCon)) = "NilTransformer"
-parseHsQOp (LHE.QConOp (LHE.Special LHE.Cons)) = "ConsTransformer"
-parseHsQOp q = error $ "Attempting to parse unexpected operator: " ++ show q
+parseQOp :: LHE.QOp -> String
+parseQOp (LHE.QVarOp qn) = parseQName qn
+parseQOp (LHE.QConOp (LHE.Special LHE.ListCon)) = "NilTransformer"
+parseQOp (LHE.QConOp (LHE.Special LHE.Cons)) = "ConsTransformer"
+parseQOp q = error $ "Attempting to parse unexpected operator: " ++ show q
 
-parseHsList :: [LHE.Exp] -> Term
-parseHsList [] = Con "NilTransformer" []
-parseHsList (e:es) = Con "ConsTransformer" [parseHsExp e, parseHsList es]
+parseList :: [LHE.Exp] -> Term
+parseList [] = Con "NilTransformer" []
+parseList (e:es) = Con "ConsTransformer" [parseExp e, parseList es]
 
-parseHsAlts :: [LHE.Alt] -> [Branch]
-parseHsAlts = map parseHsAlt
+parseAlts :: [LHE.Alt] -> [Branch]
+parseAlts = map parseAlt
 
 -- Only allow constructor patterns with variable args and no local function definitions
-parseHsAlt :: LHE.Alt -> Branch
-parseHsAlt (LHE.Alt _ (LHE.PApp qn args) alt (LHE.BDecls [])) =
-    let cons = parseHsQName qn
-        consArgs = map parseHsPatToVar args
-        body = parseHsGuardedAlts alt
+parseAlt :: LHE.Alt -> Branch
+parseAlt (LHE.Alt _ (LHE.PApp qn args) alt (LHE.BDecls [])) =
+    let cons = parseQName qn
+        consArgs = map parsePatToVar args
+        body = parseGuardedAlts alt
     in Branch cons consArgs (foldl (flip (abstract 0)) body consArgs)
-parseHsAlt (LHE.Alt _ (LHE.PList []) alt (LHE.BDecls [])) =
-    let body = parseHsGuardedAlts alt
+parseAlt (LHE.Alt _ (LHE.PList []) alt (LHE.BDecls [])) =
+    let body = parseGuardedAlts alt
     in Branch "NilTransformer" [] body
-parseHsAlt (LHE.Alt _ (LHE.PParen (LHE.PInfixApp (LHE.PVar v) (LHE.Special LHE.Cons) (LHE.PVar v'))) alt (LHE.BDecls [])) =
-    let x = parseHsName v
-        x' = parseHsName v'
-        body = parseHsGuardedAlts alt
+parseAlt (LHE.Alt _ (LHE.PParen (LHE.PInfixApp (LHE.PVar v) (LHE.Special LHE.Cons) (LHE.PVar v'))) alt (LHE.BDecls [])) =
+    let x = parseName v
+        x' = parseName v'
+        body = parseGuardedAlts alt
     in Branch "ConsTransformer" [x, x'] (abstract 0 x' (abstract 0 x body))
-parseHsAlt (LHE.Alt _ (LHE.PParen (LHE.PInfixApp (LHE.PVar v) (LHE.Special LHE.Cons) (LHE.PList []))) alt (LHE.BDecls [])) =
-    let x = parseHsName v
-        body = parseHsGuardedAlts alt
+parseAlt (LHE.Alt _ (LHE.PParen (LHE.PInfixApp (LHE.PVar v) (LHE.Special LHE.Cons) (LHE.PList []))) alt (LHE.BDecls [])) =
+    let x = parseName v
+        body = parseGuardedAlts alt
     in Branch "ConsTransformer" [x] (abstract 0 x body)
-parseHsAlt a = error $ "Unexpected case pattern: " ++ show a
+parseAlt a = error $ "Unexpected case pattern: " ++ show a
     
 -- Only allow unguarded alts
-parseHsGuardedAlts :: LHE.GuardedAlts -> Term
-parseHsGuardedAlts (LHE.UnGuardedAlt e) = parseHsExp e
-parseHsGuardedAlts a = error $ "Attempting to parse guarded case alternative: " ++ show a
+parseGuardedAlts :: LHE.GuardedAlts -> Term
+parseGuardedAlts (LHE.UnGuardedAlt e) = parseExp e
+parseGuardedAlts a = error $ "Attempting to parse guarded case alternative: " ++ show a
 
 -- Only allow unqualified names for variables and constructors
-parseHsQName :: LHE.QName -> String
-parseHsQName (LHE.UnQual n) = parseHsName n
-parseHsQName n = error "Unexpected variable: " ++ show n
+parseQName :: LHE.QName -> String
+parseQName (LHE.UnQual n) = parseName n
+parseQName n = error "Unexpected variable: " ++ show n
 
-parseHsName :: LHE.Name -> String
-parseHsName (LHE.Ident s) = s
-parseHsName (LHE.Symbol s) = s
+parseName :: LHE.Name -> String
+parseName (LHE.Ident s) = s
+parseName (LHE.Symbol s) = s
 
 fixFunctions :: Term -> [String] -> Term
 fixFunctions e@(Free v) funcNames
