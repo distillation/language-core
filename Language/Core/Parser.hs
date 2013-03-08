@@ -204,8 +204,7 @@ hsDeclIsDataCon _ = False
 
 parseDecl :: LHE.Decl -> Function
 parseDecl (LHE.FunBind [LHE.Match _ name pats _ rhs (LHE.BDecls decls)]) =
-    let
-        functionName = parseName name
+    let functionName = parseName name
         args = map parsePatToVar pats
         body = parseRhs rhs
         locals = parseDecls decls
@@ -213,9 +212,13 @@ parseDecl (LHE.FunBind [LHE.Match _ name pats _ rhs (LHE.BDecls decls)]) =
             0 -> foldr (\v e -> Lambda v (abstract 0 v e)) body args
             _ -> foldr (\v e -> Lambda v (abstract 0 v e)) (Where body locals) args
     in (functionName, body')
+-- parseDecl (LHE.FunBind matches@((LHE.Match _ name _ _ _ _):_)) =
+--    let functionName = parseName name
+--        fMatches = map (\(LHE.Match _ _ pats _ rhs (LHE.BDecls decls)) -> (pats, parseRhs rhs, parseDecls decls))
+--        noArgs = length (fst (head fMatches))
+--        
 parseDecl (LHE.PatBind _ name _ rhs (LHE.BDecls decls)) =
-    let
-        functionName = parsePatToVar name
+    let functionName = parsePatToVar name
         body = parseRhs rhs
         locals = parseDecls decls
         body' = case length decls of
@@ -223,7 +226,6 @@ parseDecl (LHE.PatBind _ name _ rhs (LHE.BDecls decls)) =
             _ -> Where body locals
     in (functionName, body')
 parseDecl d = error $ "Attempting to parse invalid decls as function: " ++ show d
-    
     
 {-|
     Parses a function argument ('LHE.Pat') into a variable name ('String') which has to be bound.
@@ -294,7 +296,7 @@ parseSpecialCon c = error $ "Unexpected special constructor: " ++ show c
     
     * 'LHE.If' statements are converted to 'Case' statements, with the 'LHE.IF' condition as the 'Case' selector.
     
-    * 'Let' patterns must either be varibles or tuples of size two.
+    * 'Let' patterns must either be variables or n-tuples.
     
     * Parsing of any other type of expression will throw an error (with the unsupported expression being shown).
 -}
@@ -360,19 +362,19 @@ parseExp (LHE.Case e alts) = Case (parseExp e) (parseAlts alts)
 parseExp (LHE.List es) = parseList es
 parseExp (LHE.Paren e) = parseExp e
 parseExp (LHE.If c t e) = Case (parseExp c) [Branch "True" [] (parseExp t), Branch "False" [] (parseExp e)]
-parseExp (LHE.Let (LHE.BDecls [LHE.PatBind _ (LHE.PTuple [LHE.PVar (LHE.Ident x), LHE.PVar (LHE.Ident x')]) _ rhs (LHE.BDecls bs)]) e) =
-    let
+parseExp (LHE.Let (LHE.BDecls [LHE.PatBind _ (LHE.PTuple pats) _ rhs (LHE.BDecls bs)]) e) =
+    let pVars = map (\(LHE.PVar (LHE.Ident v)) -> v) pats
         bindings = parseDecls bs
-        body = abstract 0 x' (abstract 0 x (parseExp e))
+        body = foldl (\e' v -> abstract 0 v e') (parseExp e) pVars
         abstraction = parseRhs rhs
     in case length bindings of
-        0 -> TupleLet x x' abstraction body
-        _ -> Where (TupleLet x x' abstraction body) bindings
+        0 -> TupleLet pVars abstraction body
+        _ -> Where (TupleLet pVars abstraction body) bindings
 parseExp (LHE.Let (LHE.BDecls bs) e) =
     let bindings = parseDecls bs
         body = parseExp e
     in foldl (\f' (v, f) -> Let v f (abstract 0 v f')) body bindings
-parseExp (LHE.Tuple (e:e':[])) = Tuple (parseExp e) (parseExp e')
+parseExp (LHE.Tuple es) = Tuple (map parseExp es)
 parseExp e = error $ "Unallowed expression type: " ++ show e
 
 {-|
@@ -432,13 +434,11 @@ parseLitString [] = error "Attempting to parse empty string as string"
     Currently only allows unqualified operators or Nil/Cons constructors.
 -}
 
--- Only allow functions/variables
 parseQOp :: LHE.QOp -> String
 parseQOp (LHE.QVarOp qn) = parseQName qn
 parseQOp (LHE.QConOp (LHE.Special LHE.ListCon)) = "NilTransformer"
 parseQOp (LHE.QConOp (LHE.Special LHE.Cons)) = "ConsTransformer"
 parseQOp q = error $ "Attempting to parse unexpected operator: " ++ show q
-
 
 {-|
     Parses a 'LHE.List' into a 'Term'
@@ -495,7 +495,6 @@ parseAlt (LHE.Alt _ (LHE.PInfixApp (LHE.PVar v) (LHE.Special LHE.Cons) (LHE.PLis
     in Branch "ConsTransformer" [x] (abstract 0 x body)
 parseAlt (LHE.Alt s (LHE.PParen p) gas decls) = parseAlt (LHE.Alt s p gas decls)
 parseAlt a = error $ "Unexpected case pattern: " ++ show a
-    
 
 {-|
     Parses a 'LHE.Case' 'Alt'ernative expression into a 'Term' to be used in as the
@@ -556,5 +555,5 @@ fixFunctions (Where e locals) funcNames =
     let (names, _) = unzip locals
         funcNames' = nub (names ++ funcNames)
     in Where (fixFunctions e funcNames') (map (\(n, b) -> (n, fixFunctions b funcNames')) locals)
-fixFunctions (Tuple e e') funcNames = Tuple (fixFunctions e funcNames) (fixFunctions e' funcNames)
-fixFunctions (TupleLet x x' e e') funcNames = TupleLet x x' (fixFunctions e funcNames) (fixFunctions e' funcNames)
+fixFunctions (Tuple es) funcNames = Tuple (map (\e' -> fixFunctions e' funcNames) es)
+fixFunctions (TupleLet xs e e') funcNames = TupleLet xs (fixFunctions e funcNames) (fixFunctions e' funcNames)
