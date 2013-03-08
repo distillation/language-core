@@ -475,7 +475,6 @@ parseAlts = map parseAlt
     * Patterns with local definitions.
 -}
 
--- Only allow constructor patterns with variable args and no local function definitions
 parseAlt :: LHE.Alt -> Branch
 parseAlt (LHE.Alt _ (LHE.PApp qn args) alt (LHE.BDecls [])) =
     let cons = parseQName qn
@@ -494,6 +493,7 @@ parseAlt (LHE.Alt _ (LHE.PInfixApp (LHE.PVar v) (LHE.Special LHE.Cons) (LHE.PLis
     let x = parseName v
         body = parseGuardedAlts alt
     in Branch "ConsTransformer" [x] (abstract 0 x body)
+parseAlt (LHE.Alt s (LHE.PParen p) gas decls) = parseAlt (LHE.Alt s p gas decls)
 parseAlt a = error $ "Unexpected case pattern: " ++ show a
     
 
