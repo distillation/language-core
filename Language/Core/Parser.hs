@@ -58,7 +58,9 @@ parseModule (LHE.Module _ mn pr wn es is ds) =
             Nothing -> error "No main function defined."
             Just f -> snd f
         cons = parseCons ds
-    in Program (fixFunctions (Where main (delete ("main", main) funcs)) ["main"]) cons mn pr wn es is
+    in case length funcs of
+        1 -> Program (fixFunctions main ["main"]) cons mn pr wn es is
+        _ -> Program (fixFunctions (Where main (delete ("main", main) funcs)) ["main"]) cons mn pr wn es is
 
 {-| 
     Parses 'LHE.Decl's ('LHE.PatBind' or 'LHE.FunBind') to 'Function's.
