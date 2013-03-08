@@ -57,7 +57,7 @@ data Term = Free FreeVar -- ^ Free variables.
           | Let String Term Term -- ^ Let abstraction
           | Where Term [Function] -- ^ Where expression: 'Term' with local 'Function's.
           | Tuple Term Term -- ^ Tuple term.
-          | TupleLet String String Term Term -- ^ 'Let' abstraction with a tuple as it's pattern.
+          | TupleLet [String] Term Term -- ^ 'Let' abstraction with a tuple as it's pattern.
 
 {-|
     Represents the branches of a 'Case' 'Term'.
@@ -206,10 +206,11 @@ rebuildExp (Case e bs) = LHE.Case (rebuildExp e) (rebuildAlts bs)
 rebuildExp (Where e bs) = LHE.Let (LHE.BDecls (rebuildDecls bs)) (rebuildExp e)
 rebuildExp (Bound i) = LHE.Var (LHE.UnQual (LHE.Ident (show i)))
 rebuildExp (Tuple e e') = LHE.Tuple [rebuildExp e, rebuildExp e']
-rebuildExp (TupleLet x x' e e') = 
-    let v = rename (free e') x
-        v' = rename (v:free e') x'
-    in LHE.Let (LHE.BDecls [LHE.PatBind (LHE.SrcLoc "" 0 0) (LHE.PTuple [LHE.PVar (LHE.Ident v), LHE.PVar (LHE.Ident v')]) Nothing (LHE.UnGuardedRhs (rebuildExp e)) (LHE.BDecls [])]) (rebuildExp (subst 0 (Free v) (subst 0 (Free v') e')))
+rebuildExp (TupleLet xs e e') = 
+    let fv = foldr (\x fv' -> rename fv' x:fv') (free e) xs
+        args = take (length xs) fv
+        pVars = map (\v -> LHE.PVar (LHE.Ident v)) args
+    in LHE.Let (LHE.BDecls [LHE.PatBind (LHE.SrcLoc "" 0 0) (LHE.PTuple pVars) Nothing (LHE.UnGuardedRhs (rebuildExp e)) (LHE.BDecls [])]) (rebuildExp (foldr (\x t -> subst 0 (Free x) t) e' args))
 
 {-|
     Rebuilds a 'Term' into a 'LHE.Int'.
@@ -326,7 +327,7 @@ free' xs (Case t bs) = foldr (\(Branch _ _ t') xs' -> free' xs' t') (free' xs t)
 free' xs (Let _ t u) = free' (free' xs t) u
 free' xs (Where t ds) = foldr (\(_, t') xs' -> free' xs' t') (free' xs t) ds
 free' xs (Tuple e e') = free' (free' xs e) e'
-free' xs (TupleLet _ _ e e') = free' (free' xs e) e'
+free' xs (TupleLet _ e e') = free' (free' xs e) e'
 
 {-|
     Given a 'Term', returns the set of 'BoundVar's within that 'Term'.
@@ -353,7 +354,7 @@ bound' d bs (Case t bs') = foldr (\(Branch _ xs t') bs'' -> bound' (d + length x
 bound' d bs (Let _ t u) = bound' (d + 1) (bound' d bs t) u
 bound' d bs (Where t ds) = foldr (\(_, t') bs' -> bound' d bs' t') (bound' d bs t) ds
 bound' d bs (Tuple t t') = bound' d (bound' d bs t) t'
-bound' d bs (TupleLet _ _ t u) = bound' (d + 2) (bound' d bs t) u
+bound' d bs (TupleLet xs t u) = bound' (d + length xs) (bound' d bs t) u
 
 {-|
     Given a 'Term' returns the set of function names, 'Fun's, called
@@ -379,7 +380,7 @@ funs' fs (Case t bs) = foldr (\(Branch _ _ t') fs' -> funs' fs' t') (funs' fs t)
 funs' fs (Let _ t u) = funs' (funs' fs t) u
 funs' fs (Where t ds) = foldr (\(_, t') fs' -> funs' fs' t') (funs' fs t) ds
 funs' fs (Tuple t u) = funs' (funs' fs t) u
-funs' fs (TupleLet _ _ t u) = funs' (funs' fs t) u
+funs' fs (TupleLet _ t u) = funs' (funs' fs t) u
 
 {-|
     Shifts (increases) the binding level of supplied bound variable by a supplied depth within a supplied 'Term'.
@@ -402,7 +403,7 @@ shift i d (Case t bs) = Case (shift i d t) (map (\(Branch c xs t') -> (Branch c 
 shift i d (Let x t u) = Let x (shift i d t) (shift i (d + 1) u)
 shift i d (Where t ds) = Where (shift i d t) (map (second (shift i d)) ds)
 shift i d (Tuple t t') = Tuple (shift i d t) (shift i d t')
-shift i d (TupleLet x x' t u) = TupleLet x x' (shift i d t) (shift i (d + 2) u)
+shift i d (TupleLet xs t u) = TupleLet xs (shift i d t) (shift i (d + length xs) u)
 
 {-|
     Substitutes a 'Term' at a supplied bound depth within another 'Term'.
@@ -425,7 +426,7 @@ subst i t (Case t' bs) = Case (subst i t t') (map (\(Branch c xs u) -> (Branch c
 subst i t (Let x t' u) = Let x (subst i t t') (subst (i + 1) t u)
 subst i t (Where t' ds) = Where (subst i t t') (map (second (subst i t)) ds)
 subst i t (Tuple e e') = Tuple (subst i t e) (subst i t e')
-subst i t (TupleLet x x' e e') = TupleLet x x' (subst i t e) (subst (i + 2) t e')
+subst i t (TupleLet xs e e') = TupleLet xs (subst i t e) (subst (i + length xs) t e')
 
 {-|
     Abstracts a variable, binding it at a given depth using de Bruijn numbering.
@@ -451,7 +452,7 @@ abstract i b (Case t bs) = Case (abstract i b t) (map (\(Branch c xs t') -> (Bra
 abstract i b (Let x t u) = Let x (abstract i b t) (abstract (i + 1) b u)
 abstract i b (Where t ds) = Where (abstract i b t) (map (second (abstract i b)) ds)
 abstract i b (Tuple t t') = Tuple (abstract i b t) (abstract i b t')
-abstract i b (TupleLet x x' t t') = TupleLet x x' (abstract i b t) (abstract (i + 2) b t')
+abstract i b (TupleLet xs t t') = TupleLet xs (abstract i b t) (abstract (i + length xs) b t')
 
 {-|
     Renames a 'String' with respect to set of 'String's.
