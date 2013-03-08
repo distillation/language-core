@@ -273,6 +273,30 @@ parseSpecialCon (LHE.ListCon) = "NilTransformer"
 parseSpecialCon (LHE.Cons) = "ConsTransformer"
 parseSpecialCon c = error $ "Unexpected special constructor: " ++ show c
 
+{-|
+    Parses an 'LHE.Exp' into a 'Term', with several restrictions.
+    
+    Current restrictions are:
+    
+    * Variable names must be unqualified ('LHE.UnQual').
+    
+    * Constructor names must be unqualified ('LHE.UnQual')
+    
+    * Literals must not be 'LHE.Word's, 'LHE.Frac's, 'LHE.PrimDouble's or negative numbers.
+    
+    * Any form of list is parsed to (x:[]) form. (e.g. [x] becomes (x:[]))
+    
+    * 'Lambda' patterns must be unqualified variables ('LHE.UnQual')
+    
+    * Parentheses are removed.
+    
+    * 'LHE.If' statements are converted to 'Case' statements, with the 'LHE.IF' condition as the 'Case' selector.
+    
+    * 'Let' patterns must either be varibles or tuples of size two.
+    
+    * Parsing of any other type of expression will throw an error (with the unsupported expression being shown).
+-}
+
 parseExp :: LHE.Exp -> Term
 parseExp (LHE.Var qn) = Free (parseQName qn)
 parseExp (LHE.Con (LHE.Special s)) = Con (parseSpecialCon s) []
