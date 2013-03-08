@@ -374,7 +374,7 @@ parseExp (LHE.Let (LHE.BDecls bs) e) =
     let bindings = parseDecls bs
         body = parseExp e
     in foldl (\f' (v, f) -> Let v f (abstract 0 v f')) body bindings
-parseExp (LHE.Tuple (e:e':[])) = Tuple (parseExp e) (parseExp e')
+parseExp (LHE.Tuple es) = Tuple (map parseExp es)
 parseExp e = error $ "Unallowed expression type: " ++ show e
 
 {-|
@@ -555,5 +555,5 @@ fixFunctions (Where e locals) funcNames =
     let (names, _) = unzip locals
         funcNames' = nub (names ++ funcNames)
     in Where (fixFunctions e funcNames') (map (\(n, b) -> (n, fixFunctions b funcNames')) locals)
-fixFunctions (Tuple e e') funcNames = Tuple (fixFunctions e funcNames) (fixFunctions e' funcNames)
+fixFunctions (Tuple es) funcNames = Tuple (map (\e' -> fixFunctions e' funcNames) es)
 fixFunctions (TupleLet xs e e') funcNames = TupleLet xs (fixFunctions e funcNames) (fixFunctions e' funcNames)
