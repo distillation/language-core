@@ -20,14 +20,14 @@ module Language.Core.Syntax(
     
 import qualified Language.Haskell.Exts as LHE
 import Control.Arrow(second)
-
-data Program = Program Term [DataType] LHE.ModuleName [LHE.ModulePragma] (Maybe LHE.WarningText) (Maybe [LHE.ExportSpec]) [LHE.ImportDecl]
  
 type FreeVar = String
 type BoundVar = Int
 type FuncName = String
 type Function = (FuncName, Term)
 type DataCon = (String, [DataType]) 
+
+data DataType = DataType String [String] [DataCon] LHE.DataOrNew (Maybe LHE.Context) [LHE.Deriving] deriving Show
 
 data Term = Free FreeVar
           | Bound BoundVar
@@ -42,9 +42,9 @@ data Term = Free FreeVar
           | TupleLet String String Term Term -- Only used in parallelization transformation.
           
 data Branch = Branch String [String] Term
-
-data DataType = DataType String [String] [DataCon] LHE.DataOrNew (Maybe LHE.Context) [LHE.Deriving] deriving Show
          
+data Program = Program Term [DataType] LHE.ModuleName [LHE.ModulePragma] (Maybe LHE.WarningText) (Maybe [LHE.ExportSpec]) [LHE.ImportDecl]         
+
 instance Eq Term where
    (==) (Free v) (Free v') = v == v'
    (==) (Bound i) (Bound i') = i == i'
