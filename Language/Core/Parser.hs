@@ -500,15 +500,21 @@ parseAlt a = error $ "Unexpected case pattern: " ++ show a
 {-|
     Parses a 'LHE.Case' 'Alt'ernative expression into a 'Term' to be used in as the
     expression in a 'Branch'.
-    
-    Currently only parses un-guareded alternatives ('LHE.UnGuardedAlt'). Attempting to
-    parse a 'LHE.GuardedAlts' will raise an error.
 -}
 
 parseGuardedAlts :: LHE.GuardedAlts -> Term
 parseGuardedAlts (LHE.UnGuardedAlt e) = parseExp e
-parseGuardedAlts a = error $ "Attempting to parse guarded case alternative: " ++ show a
+parseGuardedAlts (LHE.GuardedAlts alts) = parseGuardedAlts' alts
 
+{-|
+    Parses a set of 'LHE.GuardedAlt' into a 'Case' 'Term'.
+-}
+
+parseGuardedAlts' :: [LHE.GuardedAlt] -> Term
+parseGuardedAlts' ((LHE.GuardedAlt _ ((LHE.Qualifier e):[]) e'):[]) = Case (parseExp e) [Branch "True" [] (parseExp e')]
+parseGuardedAlts' ((LHE.GuardedAlt _ ((LHE.Qualifier e):[]) e'):as) = Case (parseExp e) [Branch "True" [] (parseExp e'), Branch "False" [] (parseGuardedAlts' as)]
+parseGuardedAlts' ((g:_)) = error ("Attempt to parse unsupported guarded alt: " ++ show g)
+parseGuardedAlts' [] = error "Attempt to parse empty set of guarded alts"
 
 {-|
     Parses qualified variable names ('LHE.QName') into a 'String' to be used as a variable name in a 'Term' or 'Branch'.
