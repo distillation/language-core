@@ -9,8 +9,6 @@ module Language.Core(
     Branch(Branch),
     DataType(DataType),
     parseFile,
-    parseString,
-    parseExp,
     free,
     bound,
     funs,

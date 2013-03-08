@@ -1,24 +1,56 @@
-module Language.Core.Parser(
-    parseFile,
-    parseString,
-    parseExp
-) where
+{-|
+    This module exports functionality for parsing 'FilePath's and 'String's into 'Program's.
+    
+    The main functionality exposed by this module is:
+    
+    * 'parseFile' parses a 'FilePath' into a 'Program'.
+    
+    * 'parseString' parses a 'String' into a 'Program'.
+    
+    * 'parseExp' parses a 'LHE.Exp' into a 'Term'.
+-}
+module Language.Core.Parser where
 
 import qualified Language.Haskell.Exts as LHE
 import Language.Core.Syntax
 import Data.List(find, delete, nub)
 
-parseFile :: FilePath -> IO Program
+{-|
+    'parseFile' takes a FilePath, and parses that file. If that file contains a 'Program', 
+    then it returns that 'Program'.
+    
+    If the file cannot be parsed to a 'LHE.Module', or contains unsupported 'Program' features,
+    then it throws an error.
+-}
+
+parseFile :: FilePath -- ^ The file containing the 'Program' to be parsed.
+          -> IO Program -- ^ The parsed 'Program', or an error will be raised.
 parseFile file = do
     fileContents <- readFile file
     return (parseString fileContents)
 
-parseString :: String -> Program
+{-|
+    'parseString' takes a 'String', and parses that string into a 'Program'. 
+    
+    If the file cannot be parsed to a 'LHE.Module', or contains unsupported 'Program' features,
+    then it throws an error.
+-}
+
+parseString :: String -- ^ The string containing the 'Program' to be parsed.
+            -> Program -- ^ The parsed 'Program', or an error will be raised.
 parseString s = case LHE.parseModule s of
     (LHE.ParseOk parse) -> parseModule parse
     err -> error $ show err
 
-parseModule :: LHE.Module -> Program
+{-| 
+    'parseModule' takes an 'LHE.Module' and parses it into a 'Program'.
+    
+    If the 'LHE.Module' contains no main function, or features currently
+    unsupported by our language model, an error will be thrown.
+-}
+
+parseModule :: LHE.Module -- ^ The input 'LHE.Module' to be parsed into a 'Program'.
+            -> Program -- ^ The parsed 'Program', or an error will be raised.
 parseModule (LHE.Module _ mn pr wn es is ds) = 
     let
         funcs = parseDecls ds
@@ -27,32 +59,96 @@ parseModule (LHE.Module _ mn pr wn es is ds) =
             Just f -> snd f
         cons = parseCons ds
     in Program (fixFunctions (Where main (delete ("main", main) funcs)) ["main"]) cons mn pr wn es is
+
+{-| 
+    Parses 'LHE.Decl's ('LHE.PatBind' or 'LHE.FunBind') to 'Function's.
+-}
  
 parseDecls :: [LHE.Decl] -> [Function]   
 parseDecls ds = map parseDecl (filter hsDeclIsFunc ds)
 
+{-| 
+    Parses 'LHE.Decl's ('LHE.DataDecl's) to 'DataType's.
+-}
+
 parseCons :: [LHE.Decl] -> [DataType]
 parseCons ds = map parseDataCon (filter hsDeclIsDataCon ds)
+
+{-| 
+    Parses a 'LHE.Decl's ('LHE.DataDecl') into a  'DataType'.
+    
+    * If the 'LHE.DataDecl' contains any unsupported features (e.g. 'LHE.UnpackedTy') then an
+    error will be raised. 
+    
+    * An error will also be raised if an attempt is made to parse any
+    'LHE.Decl' that is not a 'LHE.DataDecl'.
+-}
 
 parseDataCon :: LHE.Decl -> DataType
 parseDataCon (LHE.DataDecl _ don con name vars cons derive) = DataType (parseName name) (map parseTyVarBind vars) (map parseQualConDecl cons) don (Just con) derive
 parseDataCon d = error ("Attempting to parse non data decl as data type: " ++ show d)
 
-parseQualConDecl :: LHE.QualConDecl -> (String, [DataType])
+{-| 
+    Parses a 'LHE.QualConDecl's into a 'DataCon'.
+    
+    If the 'LHE.QualConDecl' contains any unsupported features (e.g. 'LHE.KindedVar') then an
+    error will be raised. 
+-}
+
+parseQualConDecl :: LHE.QualConDecl -> DataCon
 parseQualConDecl (LHE.QualConDecl _ _ _ con) = parseConDecl con
+
+{-| 
+    Parses a 'LHE.TyVarBind's into a type variable name, e.g. "a".
+    
+    If an attempt is made to parse any 'LHE.TyVarBind' that is not
+    a 'LHE.UnkindedVar', an error will be raised.
+-}
 
 parseTyVarBind :: LHE.TyVarBind -> String
 parseTyVarBind (LHE.UnkindedVar n) = parseName n
 parseTyVarBind t = error ("Kinded type variables are not supported: " ++ show t)
 
-parseConDecl :: LHE.ConDecl -> (String, [DataType])
+{-| 
+    Parses a 'LHE.ConDecl' into a 'DataCon'
+    
+    * If the 'LHE.ConDecl' contains any unsupported features (e.g. 'LHE.UnpackedTy') then an
+    error will be raised. 
+    
+    * An error will also be raised if an attempt is made to parse any
+    'LHE.ConDecl' that is not a 'LHE.ConDecl'.
+-}
+
+parseConDecl :: LHE.ConDecl -> DataCon
 parseConDecl (LHE.ConDecl name bangs) = (parseName name, map parseBangType bangs)
 parseConDecl d = error ("Attempting to parse disallowed constructor decl as data type: " ++ show d)
+
+
+{-| 
+    Parses a 'LHE.BangType' into a 'DataType'
+    
+    If the 'LHE.ConDecl' contains any unsupported features (e.g. 'LHE.UnpackedTy') then an
+    error will be raised. 
+-}
 
 parseBangType :: LHE.BangType -> DataType
 parseBangType (LHE.BangedTy t) = parseType t
 parseBangType (LHE.UnBangedTy t) = parseType t
 parseBangType (LHE.UnpackedTy t) = error ("Types with the UNPACK directive are not supported: " ++ show t) 
+
+{-| 
+    Parses a 'LHE.Type' into a 'DataType'
+    
+    Currently supports:
+    
+    * 'LHE.TyVar' - Straight forward type variables.
+    
+    * 'LHE.TyApp' - Containing a 'LHE.TyCon' and up to two type variables, e.g. "Type a b".
+    
+    * 'LHE.TyParen' - Parenthesised types.
+    
+    Attempting to parse any other 'LHE.Type' will raise an error.
+-}
 
 parseType :: LHE.Type -> DataType
 parseType (LHE.TyVar v) = DataType (parseName v) [] [] LHE.DataType Nothing []
@@ -61,18 +157,51 @@ parseType (LHE.TyApp (LHE.TyApp (LHE.TyCon v) (LHE.TyVar v')) (LHE.TyVar v'')) =
 parseType (LHE.TyParen t) = parseType t
 parseType t = error ("Attempting to parse disallowed type: " ++ show t)  
 
-hsDeclIsFunc :: LHE.Decl -> Bool
+{-|
+    Determines whether or not a supplied 'LHE.Decl' is a function.
+    
+    Returns 'False' for anything other than a 'LHE.FunBind' or a 'LHE.PatBind'.
+-}
+
+hsDeclIsFunc :: LHE.Decl -- ^ The 'LHE.Decl' to be tested for being a function.
+             -> Bool -- ^ Whether or not the supplied 'LHE.Decl' is a function.
 hsDeclIsFunc (LHE.FunBind{}) = True
 hsDeclIsFunc (LHE.PatBind{}) = True
 hsDeclIsFunc _ = False
 
-hsDeclIsDataCon :: LHE.Decl -> Bool
+{-|
+    Determines whether or not a supplied 'LHE.Decl' is a data constructor.
+    
+    Returns 'False' for anything other than a 'LHE.DataDecl'.
+-}
+
+hsDeclIsDataCon :: LHE.Decl -- ^ The 'LHE.Decl' to be tested for being a data constructor.
+                -> Bool -- ^ Whether or not the supplied 'LHE.Decl' is a data constructor.
 hsDeclIsDataCon (LHE.DataDecl{}) = True
 hsDeclIsDataCon _ = False
 
--- No multiple function definitions allowed
+{-|
+    Parses a 'LHE.Decl' into a 'Function. 
+    
+    Currently supports: 
+    
+    * Functions with a single definition.
+    
+    * Functions using guards.
+    
+    * A pattern binding for a functions (e.g. x = 1).
+    
+    * Local function definitions (returns a 'Where' 'Term').
+    
+    Current restrictions:
+    
+    * Functions with multiple definitions ('LHE.Match's) are not allowed.
+    
+    * Only allows function arguments to be variable name bindings.
+-}
+
 parseDecl :: LHE.Decl -> Function
-parseDecl (LHE.FunBind [LHE.Match _ name pats _ rhs (LHE.BDecls decls)]) = -- Local definitions
+parseDecl (LHE.FunBind [LHE.Match _ name pats _ rhs (LHE.BDecls decls)]) =
     let
         functionName = parseName name
         args = map parsePatToVar pats
@@ -82,7 +211,7 @@ parseDecl (LHE.FunBind [LHE.Match _ name pats _ rhs (LHE.BDecls decls)]) = -- Lo
             0 -> foldr (\v e -> Lambda v (abstract 0 v e)) body args
             _ -> foldr (\v e -> Lambda v (abstract 0 v e)) (Where body locals) args
     in (functionName, body')
-parseDecl (LHE.PatBind _ name _ rhs (LHE.BDecls decls)) = -- Local definitions
+parseDecl (LHE.PatBind _ name _ rhs (LHE.BDecls decls)) =
     let
         functionName = parsePatToVar name
         body = parseRhs rhs
@@ -93,20 +222,51 @@ parseDecl (LHE.PatBind _ name _ rhs (LHE.BDecls decls)) = -- Local definitions
     in (functionName, body')
 parseDecl d = error $ "Attempting to parse invalid decls as function: " ++ show d
     
--- Only allow variable names as function bound arguments or lambda variables
+    
+{-|
+    Parses a function argument ('LHE.Pat') into a variable name ('String') which has to be bound.
+    
+    Only variable names are allowed to be function arguments. Anything that is not 
+    a 'LHE.PVar' will throw an error.
+-}
+
 parsePatToVar :: LHE.Pat -> String
 parsePatToVar (LHE.PVar n) = parseName n
+parsePatToVar (LHE.PParen p) = parsePatToVar p
 parsePatToVar p = error $ "Unexpection function patterns: " ++ show p
+
+{-|
+    Parses a 'LHE.Rhs' of a 'LHE.Decl' into a 'Term'.
+    
+    Supports both 'LHE.UnGuardedRhs' and 'LHE.GuardedRhss'.
+    
+    'LHE.GuardedRhss's are building into a series of nested 'Case' expressions, with each 
+    selector testing for the validity of a guard.
+-}
 
 parseRhs :: LHE.Rhs -> Term
 parseRhs (LHE.UnGuardedRhs e) = parseExp e
 parseRhs (LHE.GuardedRhss guards) = parseGuardedRhss guards
+
+{-|
+    Parses a set 'LHE.GuardedRhs' of contained in a 'LHE.GuardedRhss' into a 'Term'.
+    
+    'LHE.GuardedRhs's are building into a series of nested 'Case' expressions, with each 
+    selector testing for the validity of a guard.
+-}
 
 parseGuardedRhss :: [LHE.GuardedRhs] -> Term
 parseGuardedRhss (LHE.GuardedRhs _ ((LHE.Qualifier e):[]) e':[]) = Case (parseExp e) [Branch "True" [] (parseExp e')]
 parseGuardedRhss (LHE.GuardedRhs _ ((LHE.Qualifier e):[]) e':gs) = Case (parseExp e) [Branch "True" [] (parseExp e'), Branch "False" [] (parseGuardedRhss gs)]
 parseGuardedRhss (LHE.GuardedRhs _ stmts _:_) = error ("Guards with statements are not supported: " ++ show stmts)
 parseGuardedRhss [] = error "Attempting to parse empty set of guarded rhs"
+
+{-|
+    Parses special constructors ('LHE.SpecialCon') into a 'String' that represents
+    the internal representation of the constructor in our language model.
+    
+    Currently supports 'LHE.ListCon' ([]) and 'LHE.Cons' (builds lists).
+-}
 
 parseSpecialCon :: LHE.SpecialCon -> String
 parseSpecialCon (LHE.ListCon) = "NilTransformer"
@@ -180,6 +340,28 @@ parseExp (LHE.Let (LHE.BDecls bs) e) =
 parseExp (LHE.Tuple (e:e':[])) = Tuple (parseExp e) (parseExp e')
 parseExp e = error $ "Unallowed expression type: " ++ show e
 
+{-|
+    Parses 'LHE.Literal' expressions into 'Terms'
+    
+    Currently supports:
+     
+    * 'LHE.Int' and 'LHE.PrimInt'
+    
+    * 'LHE.Char' and 'LHE.PrimChar'
+    
+    * 'LHE.String' and 'LHE.PrimString'
+    
+    Currently does not support (and will raise an error if a parsing attempt is made):
+    
+    * 'LHE.Frac'
+    
+    * 'LHE.PrimDouble'
+    
+    * 'LHE.PrimWord'
+    
+    * Negative numbers.
+-}
+
 parseLit :: LHE.Literal -> Term
 parseLit (LHE.Int i) = parseInt i
 parseLit (LHE.PrimInt i) = parseInt i
@@ -189,11 +371,20 @@ parseLit (LHE.String s) = Con "StringTransformer" [parseLitString s]
 parseLit (LHE.PrimString s) = Con "StringTransformer" [parseLitString s]
 parseLit l = error ("Unexpected floating point number: " ++ show l)
 
+{-|
+    Parses an 'Integer' into a 'Con' 'Term' of S and Z numbers.
+-}
+
 parseInt :: Integer -> Term
 parseInt 0 = Con "Z" []
 parseInt n 
  | n < 0 = error ("Unexpected negative number" ++ show n)
  | otherwise = Con "S" [parseInt (n - 1)]
+
+{-|
+    Parses a 'String' into a 'Con' 'Term' with each element
+    of the 'String' being the constructor name.
+-}
 
 parseLitString :: String -> Term
 parseLitString (c:[]) = Con (c:"") []
@@ -235,21 +426,49 @@ parseAlt (LHE.Alt _ (LHE.PParen (LHE.PInfixApp (LHE.PVar v) (LHE.Special LHE.Con
     in Branch "ConsTransformer" [x] (abstract 0 x body)
 parseAlt a = error $ "Unexpected case pattern: " ++ show a
     
--- Only allow unguarded alts
+
+{-|
+    Parses a 'LHE.Case' 'Alt'ernative expression into a 'Term' to be used in as the
+    expression in a 'Branch'.
+    
+    Currently only parses un-guareded alternatives ('LHE.UnGuardedAlt'). Attempting to
+    parse a 'LHE.GuardedAlts' will raise an error.
+-}
+
 parseGuardedAlts :: LHE.GuardedAlts -> Term
 parseGuardedAlts (LHE.UnGuardedAlt e) = parseExp e
 parseGuardedAlts a = error $ "Attempting to parse guarded case alternative: " ++ show a
 
--- Only allow unqualified names for variables and constructors
+
+{-|
+    Parses qualified variable names ('LHE.QName') into a 'String' to be used as a variable name in a 'Term' or 'Branch'.
+    
+    Only accepts unqualified variable names ('LHE.UnQual') currently. Will support others when import
+    and parsing of local modules is supported.
+-}
+
 parseQName :: LHE.QName -> String
 parseQName (LHE.UnQual n) = parseName n
 parseQName n = error "Unexpected variable: " ++ show n
+
+{-|
+    Parses variable 'LHE.Name's into a 'String' to be used as a variable name in a 'Term' or 'Branch'.
+    
+    Only accepts unqualified variable names ('LHE.UnQual') currently. Will support others when import
+    and parsing of local modules is supported.
+-}
+
 
 parseName :: LHE.Name -> String
 parseName (LHE.Ident s) = s
 parseName (LHE.Symbol s) = s
 
-fixFunctions :: Term -> [String] -> Term
+{-|
+    Fixes calls to 'Fun'ctions within a 'Term' with respect to a set 
+    of supplied 'FunctName's.
+-}
+
+fixFunctions :: Term -> [FuncName] -> Term
 fixFunctions e@(Free v) funcNames
  | v `elem` funcNames = Fun v
  | otherwise = e
