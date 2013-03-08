@@ -57,7 +57,7 @@ data Term = Free FreeVar -- ^ Free variables.
           | Let String Term Term -- ^ Let abstraction
           | Where Term [Function] -- ^ Where expression: 'Term' with local 'Function's.
           | Tuple Term Term -- ^ Tuple term.
-          | TupleLet [String] Term Term -- ^ 'Let' abstraction with a tuple as it's pattern.
+          | TupleLet [String] Term Term -- ^ 'Let' abstraction with a tuple as its pattern.
 
 {-|
     Represents the branches of a 'Case' 'Term'.
@@ -84,6 +84,7 @@ instance Eq Term where
    (==) (Where e fs) (Where e' fs') = let (_, gs) = unzip fs
                                           (_', gs') = unzip fs'
                                       in e == e' && gs == gs'
+   (==) (TupleLet _ t u) (TupleLet _ t' u') = t == t' && u == u'
    (==) _ _ = False
    
 instance Eq Branch where
