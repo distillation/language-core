@@ -1,5 +1,8 @@
 module Language.Core(
     Program(Program),
+    FuncName,
+    FreeVar,
+    BoundVar,
     Function,
     DataCon,
     Term(Free, Lambda, Let, Fun, Con, Apply, Case, Bound, Where, Tuple, TupleLet),

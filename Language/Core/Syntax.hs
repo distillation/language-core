@@ -1,5 +1,8 @@
 module Language.Core.Syntax(
     Program(Program),
+    FreeVar,
+    BoundVar,
+    FuncName,
     Function,
     DataCon,
     Term(Free, Lambda, Let, Fun, Con, Apply, Case, Bound, Where, Tuple, TupleLet),
@@ -19,16 +22,19 @@ import qualified Language.Haskell.Exts as LHE
 import Control.Arrow(second)
 
 data Program = Program Term [DataType] LHE.ModuleName [LHE.ModulePragma] (Maybe LHE.WarningText) (Maybe [LHE.ExportSpec]) [LHE.ImportDecl]
+ 
+type FreeVar = String
+type BoundVar = Int
+type FuncName = String
+type Function = (FuncName, Term)
+type DataCon = (String, [DataType]) 
 
-type Function = (String, Term)
-type DataCon = (String, [DataType])  
-
-data Term = Free String
-          | Bound Int
+data Term = Free FreeVar
+          | Bound BoundVar
           | Lambda String Term
           | Con String [Term]
           | Apply Term Term
-          | Fun String
+          | Fun FuncName
           | Case Term [Branch]
           | Let String Term Term
           | Where Term [Function]
@@ -198,10 +204,10 @@ match (Tuple e f) (Tuple e' f') = match e e' && match f f'
 match (TupleLet{}) (TupleLet{}) = True
 match _ _ = False
 
-free :: Term -> [String]
+free :: Term -> [FreeVar]
 free = free' []
 
-free' :: [String] -> Term -> [String]
+free' :: [FreeVar] -> Term -> [FreeVar]
 free' xs (Free x)
  | x `elem` xs = xs
  | otherwise = x:xs
@@ -219,7 +225,7 @@ free' xs (TupleLet _ _ e e') = free' (free' xs e) e'
 bound :: Term -> [Int]
 bound = bound' 0 []
 
-bound' :: Int -> [Int] -> Term -> [Int]
+bound' :: Int -> [BoundVar] -> Term -> [BoundVar]
 bound' _ bs (Free _) = bs
 bound' d bs (Bound i)
  | b < 0 || b `elem` bs = bs
@@ -235,10 +241,10 @@ bound' d bs (Where t ds) = foldr (\(_, t') bs' -> bound' d bs' t') (bound' d bs 
 bound' d bs (Tuple t t') = bound' d (bound' d bs t) t'
 bound' d bs (TupleLet _ _ t u) = bound' (d + 2) (bound' d bs t) u
 
-funs :: Term -> [String]
+funs :: Term -> [FuncName]
 funs = funs' []
 
-funs' :: [String] -> Term -> [String]
+funs' :: [FuncName] -> Term -> [FuncName]
 funs' fs (Free _) = fs
 funs' fs (Bound _) = fs
 funs' fs (Lambda _ t) = funs' fs t
@@ -251,7 +257,7 @@ funs' fs (Where t ds) = foldr (\(_, t') fs' -> funs' fs' t') (funs' fs t) ds
 funs' fs (Tuple t u) = funs' (funs' fs t) u
 funs' fs (TupleLet _ _ t u) = funs' (funs' fs t) u
 
-shift :: Int -> Int -> Term -> Term
+shift :: BoundVar -> Int -> Term -> Term
 shift 0 _ u = u
 shift _ _ (Free x) = Free x
 shift i d (Bound j)
@@ -267,7 +273,7 @@ shift i d (Where t ds) = Where (shift i d t) (map (second (shift i d)) ds)
 shift i d (Tuple t t') = Tuple (shift i d t) (shift i d t')
 shift i d (TupleLet x x' t u) = TupleLet x x' (shift i d t) (shift i (d + 2) u)
 
-subst :: Int -> Term -> Term -> Term
+subst :: BoundVar -> Term -> Term -> Term
 subst _ _ (Free x) = Free x
 subst i t (Bound i')
  | i' < i = Bound i'
@@ -283,7 +289,7 @@ subst i t (Where t' ds) = Where (subst i t t') (map (second (subst i t)) ds)
 subst i t (Tuple e e') = Tuple (subst i t e) (subst i t e')
 subst i t (TupleLet x x' e e') = TupleLet x x' (subst i t e) (subst (i + 2) t e')
 
-abstract :: Int -> String -> Term -> Term
+abstract :: Int -> FreeVar -> Term -> Term
 abstract i b (Free x)
  | x == b = Bound i
  | otherwise = Free x
