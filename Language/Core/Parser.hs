@@ -322,19 +322,28 @@ parseExp app@(LHE.App e e')
  | isConApp app = Con (parseCon e) (parseConArgs e ++ [parseExp e'])
  | otherwise = Apply (parseExp e) (parseExp e')
  where
+     {-
+         Determines whether a an 'LHE.App' is a construction.
+         
+         If the root of the application is a constructor, then it is a 'Con' expression.
+     -}
+     
      isConApp (LHE.App (LHE.Con _) _) = True
      isConApp (LHE.App f _) = isConApp f
      isConApp _ = False
      
-     parseCon (LHE.App (LHE.Con qn) _) = parseConsQName qn
+     {-
+         Parses the constructor name at the root of an 'LHE.App' construction.
+     -}
+     
+     parseCon (LHE.App (LHE.Con qn) _) = parseQName qn
      parseCon (LHE.App f _) = parseCon f
-     parseCon (LHE.Con qn) = parseConsQName qn
+     parseCon (LHE.Con qn) = parseQName qn
      parseCon f = error $ "Parsing unexpected expression as constructor: " ++ show f
      
-     parseConsQName (LHE.UnQual n) = parseName n
-     parseConsQName (LHE.Special LHE.ListCon) = "NilTransformer"
-     parseConsQName (LHE.Special LHE.Cons) = "ConsTransformer"
-     parseConsQName c = error $ "Unexpected constructor: " ++ show c
+     {-
+         Build a list of parsed arguemnts for a 'Con' expression.
+     -}
      
      parseConArgs (LHE.App (LHE.Con _) f) = [parseExp f]
      parseConArgs (LHE.App f f') =  parseConArgs f ++ [parseExp f'] 
@@ -415,6 +424,12 @@ parseLitString (c:[]) = Con (c:"") []
 parseLitString (c:cs) = Con (c:"") [parseLitString cs]
 parseLitString [] = error "Attempting to parse empty string as string"
 
+{-|
+    Parses qualified operators for 'LHE.InfixApp's. 
+    
+    Currently only allows unqualified operators or Nil/Cons constructors.
+-}
+
 -- Only allow functions/variables
 parseQOp :: LHE.QOp -> String
 parseQOp (LHE.QVarOp qn) = parseQName qn
@@ -422,12 +437,41 @@ parseQOp (LHE.QConOp (LHE.Special LHE.ListCon)) = "NilTransformer"
 parseQOp (LHE.QConOp (LHE.Special LHE.Cons)) = "ConsTransformer"
 parseQOp q = error $ "Attempting to parse unexpected operator: " ++ show q
 
+
+{-|
+    Parses a 'LHE.List' into a 'Term'
+    
+    Converts the set of 'LHE.Exp's into a Cons list containing the expressions.
+-}
+
 parseList :: [LHE.Exp] -> Term
 parseList [] = Con "NilTransformer" []
 parseList (e:es) = Con "ConsTransformer" [parseExp e, parseList es]
 
+{-|
+    Parses a set of 'LHE.Case' alternatives into a set of 'Branch'es.
+-}
+
 parseAlts :: [LHE.Alt] -> [Branch]
 parseAlts = map parseAlt
+
+{-|
+    Parses a 'LHE.Alt' into a branch.
+    
+    Currently allows:
+    
+    * Constructor 'LHE.Alt's (with local constructor names).
+    
+    * 'LHE.Alt's with an empty list as the pattern.
+    
+    * 'LHE.Alt's with either an (x:xs) or (x:[]) pattern, where x is some variable name.
+    
+    Attempts to parse any other patterns will result in an error being raised.
+    
+    Disallowed:
+    
+    * Patterns with local definitions.
+-}
 
 -- Only allow constructor patterns with variable args and no local function definitions
 parseAlt :: LHE.Alt -> Branch
@@ -439,12 +483,12 @@ parseAlt (LHE.Alt _ (LHE.PApp qn args) alt (LHE.BDecls [])) =
 parseAlt (LHE.Alt _ (LHE.PList []) alt (LHE.BDecls [])) =
     let body = parseGuardedAlts alt
     in Branch "NilTransformer" [] body
-parseAlt (LHE.Alt _ (LHE.PParen (LHE.PInfixApp (LHE.PVar v) (LHE.Special LHE.Cons) (LHE.PVar v'))) alt (LHE.BDecls [])) =
+parseAlt (LHE.Alt _ (LHE.PInfixApp (LHE.PVar v) (LHE.Special LHE.Cons) (LHE.PVar v')) alt (LHE.BDecls [])) =
     let x = parseName v
         x' = parseName v'
         body = parseGuardedAlts alt
     in Branch "ConsTransformer" [x, x'] (abstract 0 x' (abstract 0 x body))
-parseAlt (LHE.Alt _ (LHE.PParen (LHE.PInfixApp (LHE.PVar v) (LHE.Special LHE.Cons) (LHE.PList []))) alt (LHE.BDecls [])) =
+parseAlt (LHE.Alt _ (LHE.PInfixApp (LHE.PVar v) (LHE.Special LHE.Cons) (LHE.PList [])) alt (LHE.BDecls [])) =
     let x = parseName v
         body = parseGuardedAlts alt
     in Branch "ConsTransformer" [x] (abstract 0 x body)
@@ -467,21 +511,18 @@ parseGuardedAlts a = error $ "Attempting to parse guarded case alternative: " ++
 {-|
     Parses qualified variable names ('LHE.QName') into a 'String' to be used as a variable name in a 'Term' or 'Branch'.
     
-    Only accepts unqualified variable names ('LHE.UnQual') currently. Will support others when import
-    and parsing of local modules is supported.
+    Only accepts unqualified variable names ('LHE.UnQual') currently and 'LHE.Special' constructors representing Nil and
+    List constructors. Will support others when import and parsing of local modules is supported.
 -}
 
 parseQName :: LHE.QName -> String
 parseQName (LHE.UnQual n) = parseName n
+parseQName (LHE.Special s) = parseSpecialCon s
 parseQName n = error "Unexpected variable: " ++ show n
 
 {-|
     Parses variable 'LHE.Name's into a 'String' to be used as a variable name in a 'Term' or 'Branch'.
-    
-    Only accepts unqualified variable names ('LHE.UnQual') currently. Will support others when import
-    and parsing of local modules is supported.
 -}
-
 
 parseName :: LHE.Name -> String
 parseName (LHE.Ident s) = s

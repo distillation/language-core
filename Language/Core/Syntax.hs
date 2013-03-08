@@ -1,49 +1,75 @@
-module Language.Core.Syntax(
-    Program(Program),
-    FreeVar,
-    BoundVar,
-    FuncName,
-    Function,
-    DataCon,
-    Term(Free, Lambda, Let, Fun, Con, Apply, Case, Bound, Where, Tuple, TupleLet),
-    Branch(Branch),
-    DataType(DataType),
-    match,
-    free,
-    bound,
-    funs,
-    shift,
-    subst,
-    abstract,
-    rename
-) where
+{-|
+    This module defines syntax defintions for our langauge model.
+-}
+
+module Language.Core.Syntax where
     
 import qualified Language.Haskell.Exts as LHE
 import Control.Arrow(second)
  
+{-|
+    The type of free variables.
+-} 
+ 
 type FreeVar = String
+
+{-|
+    The type of bound variables.
+-} 
+
 type BoundVar = Int
+
+{-|
+    The type of function names.
+-} 
+
 type FuncName = String
+
+{-|
+    The type of function definitions..
+-} 
+
 type Function = (FuncName, Term)
+
+{-|
+    The type of data constructor definition.
+-} 
+
 type DataCon = (String, [DataType]) 
+
+{-|
+    Represents data type definitions in our language model.
+-}
 
 data DataType = DataType String [String] [DataCon] LHE.DataOrNew (Maybe LHE.Context) [LHE.Deriving] deriving Show
 
-data Term = Free FreeVar
-          | Bound BoundVar
-          | Lambda String Term
-          | Con String [Term]
-          | Apply Term Term
-          | Fun FuncName
-          | Case Term [Branch]
-          | Let String Term Term
-          | Where Term [Function]
-          | Tuple Term Term -- Only used in parallelization transformation.
-          | TupleLet String String Term Term -- Only used in parallelization transformation.
-          
+{-|
+    Represents expressions in our language model.
+-}
+
+data Term = Free FreeVar -- ^ Free variables.
+          | Bound BoundVar -- ^ Bound variables (Bound within 'Lambda', 'Branch'es, 'Let's or 'TupleLet's).
+          | Lambda String Term -- ^ Lambda abstraction.
+          | Con String [Term] -- ^ Constructor expression.
+          | Apply Term Term -- ^ Term application.
+          | Fun FuncName -- ^ Function name.
+          | Case Term [Branch] -- ^ Case expression.
+          | Let String Term Term -- ^ Let abstraction
+          | Where Term [Function] -- ^ Where expression: 'Term' with local 'Function's.
+          | Tuple Term Term -- ^ Tuple term.
+          | TupleLet String String Term Term -- ^ 'Let' abstraction with a tuple as it's pattern.
+
+{-|
+    Represents the branches of a 'Case' 'Term'.
+-}
+  
 data Branch = Branch String [String] Term
-         
-data Program = Program Term [DataType] LHE.ModuleName [LHE.ModulePragma] (Maybe LHE.WarningText) (Maybe [LHE.ExportSpec]) [LHE.ImportDecl]         
+
+{-|
+    Represents our language models definition of a program.
+-}        
+ 
+data Program = Program Term [DataType] LHE.ModuleName [LHE.ModulePragma] (Maybe LHE.WarningText) (Maybe [LHE.ExportSpec]) [LHE.ImportDecl]
 
 instance Eq Term where
    (==) (Free v) (Free v') = v == v'
@@ -69,25 +95,53 @@ instance Show Program where
 instance Show Term where
     show t = LHE.prettyPrint (rebuildExp t)
 
+{-|
+    Rebuilds a 'Program' into an 'LHE.Module' to enable pretty printing.
+-}
+
 rebuildModule :: Program -> LHE.Module    
 rebuildModule (Program (Where main funcs) cons mn ps wn es is) = LHE.Module (LHE.SrcLoc "" 0 0) mn ps wn es is (rebuildDataCons cons ++ rebuildDecls (("main",main):funcs))
 rebuildModule (Program e cons mn ps wn es is) = LHE.Module (LHE.SrcLoc "" 0 0) mn ps wn es is (rebuildDataCons cons ++ rebuildDecls [("main", e)])
 
+{-|
+    Rebuilds a set of 'DataType' into a set of 'LHE.Decl' for pretty printing.
+-}
+
 rebuildDataCons :: [DataType] -> [LHE.Decl]
 rebuildDataCons = map rebuildDataCon
+
+{-|
+    Rebuilds a 'DataType' into an 'LHE.Decl' for pretty printing.
+-}
 
 rebuildDataCon :: DataType -> LHE.Decl
 rebuildDataCon (DataType name vars cons don (Just context) derive) = LHE.DataDecl (LHE.SrcLoc "" 0 0) don context (LHE.Ident name) (map (LHE.UnkindedVar . LHE.Ident) vars) (rebuildConDecls cons) derive
 rebuildDataCon (DataType name vars cons don Nothing derive) = LHE.DataDecl (LHE.SrcLoc "" 0 0) don [] (LHE.Ident name) (map (LHE.UnkindedVar . LHE.Ident) vars) (rebuildConDecls cons) derive
 
-rebuildConDecls :: [(String, [DataType])] -> [LHE.QualConDecl]
+{-|
+    Rebuilds a set of 'DataCon' into a set of 'LHE.QualConDecl' for pretty printing.
+-}
+
+rebuildConDecls :: [DataCon] -> [LHE.QualConDecl]
 rebuildConDecls = map rebuildConDecl
 
-rebuildConDecl :: (String, [DataType]) -> LHE.QualConDecl
+{-|
+    Rebuilds a 'DataCon' into a 'LHE.QualConDecl' for pretty printing.
+-}
+
+rebuildConDecl :: DataCon -> LHE.QualConDecl
 rebuildConDecl (name, btypes) = LHE.QualConDecl (LHE.SrcLoc "" 0 0) [] [] (LHE.ConDecl (LHE.Ident name) (rebuildBangTypes btypes))
+
+{-|
+    Rebuilds a set of 'DataTypes' into set of 'LHE.BangType's for pretty printing.
+-}
 
 rebuildBangTypes :: [DataType] -> [LHE.BangType]
 rebuildBangTypes = map rebuildBangType
+
+{-|
+    Rebuilds a 'DataType' into a 'LHE.BangType' for pretty printing.
+-}
 
 rebuildBangType :: DataType -> LHE.BangType
 rebuildBangType (DataType name [] _ _ _ _) = LHE.UnBangedTy (LHE.TyVar (LHE.Ident name))
@@ -95,11 +149,23 @@ rebuildBangType (DataType cname (vname:[]) _ _ _ _) = LHE.UnBangedTy (LHE.TyApp 
 rebuildBangType (DataType cname (vname:vname':[]) _ _ _ _) = LHE.UnBangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident cname))) (LHE.TyVar (LHE.Ident vname))) (LHE.TyVar (LHE.Ident vname')))
 rebuildBangType _ = error "Attempting to rebuild malformed data type."
 
+{-|
+    Rebuilds a set of 'Function's into a set of 'LHE.Decl's for pretty printing.
+-}
+
 rebuildDecls :: [Function] -> [LHE.Decl]
 rebuildDecls = map rebuildDecl
 
+{-|
+    Rebuilds a 'Function' into a 'LHE.Decl' for pretty printing.
+-}
+
 rebuildDecl :: Function -> LHE.Decl
 rebuildDecl (name, body) = LHE.FunBind [LHE.Match (LHE.SrcLoc "" 0 0) (LHE.Ident name) [] Nothing (LHE.UnGuardedRhs (rebuildExp body)) (LHE.BDecls [])]
+
+{-|
+    Rebuilds a 'Term' into a 'LHE.Exp'.
+-}
 
 rebuildExp :: Term -> LHE.Exp
 rebuildExp (Free v) = LHE.Var (LHE.UnQual (LHE.Ident v))
@@ -145,21 +211,41 @@ rebuildExp (TupleLet x x' e e') =
         v' = rename (v:free e') x'
     in LHE.Let (LHE.BDecls [LHE.PatBind (LHE.SrcLoc "" 0 0) (LHE.PTuple [LHE.PVar (LHE.Ident v), LHE.PVar (LHE.Ident v')]) Nothing (LHE.UnGuardedRhs (rebuildExp e)) (LHE.BDecls [])]) (rebuildExp (subst 0 (Free v) (subst 0 (Free v') e')))
 
+{-|
+    Rebuilds a 'Term' into a 'LHE.Int'.
+-}
+
 rebuildInt :: Term -> LHE.Exp
 rebuildInt e = LHE.Lit (LHE.Int (rebuildInt' e))
+
+{-|
+    Rebuilds a 'Term' into a 'LHE.Int'.
+-}
 
 rebuildInt' :: Term -> Integer
 rebuildInt' (Con "Z" _) = 0
 rebuildInt' (Con "S" (e:[])) = 1 + rebuildInt' e
 rebuildInt' _ = error "Attempting to rebuild non-Integer as Integer"
 
+{-|
+    Rebuilds a 'Term' into a 'String'
+-}
+
 rebuildString :: Term -> String
 rebuildString (Con c []) = c
 rebuildString (Con c (e:[])) = c ++ rebuildString e
 rebuildString _ = error "Attempting to rebuild non-String as String"
 
+{-|
+    Rebuilds a set of 'Branch'es into a set of 'LHE.Alt's.
+-}
+
 rebuildAlts :: [Branch] -> [LHE.Alt]
 rebuildAlts = map rebuildAlt
+
+{-|
+    Rebuilds a 'Branch' into an 'LHE.Alt'
+-}
 
 rebuildAlt :: Branch -> LHE.Alt
 rebuildAlt (Branch "NilTransformer" [] e) = LHE.Alt (LHE.SrcLoc "" 0 0) (LHE.PList []) (LHE.UnGuardedAlt (rebuildExp e)) (LHE.BDecls [])
@@ -180,15 +266,27 @@ rebuildAlt (Branch c args e) =
         e' = foldr (\x t -> subst 0 (Free x) t) e args'
     in LHE.Alt (LHE.SrcLoc "" 0 0) (LHE.PApp (LHE.UnQual (LHE.Ident c)) (map (LHE.PVar . LHE.Ident) args')) (LHE.UnGuardedAlt (rebuildExp e')) (LHE.BDecls [])
 
+{-|
+    Rebuilds a set of supplied 'Term's into an 'LHE.Exp' that represents a constructor application.
+-}
+
 rebuildCon :: [Term] -> LHE.Exp
 rebuildCon (e:[]) = LHE.Paren (LHE.InfixApp (rebuildExp e) (LHE.QConOp (LHE.Special LHE.Cons)) (LHE.Con (LHE.Special LHE.ListCon)))
 rebuildCon es = rebuildCon' es
+
+{-|
+    Rebuilds a set of supplied 'Term's into an 'LHE.Exp' that represents a constructor application.
+-}
 
 rebuildCon' :: [Term] -> LHE.Exp
 rebuildCon' (Con "NilTransformer" []:[]) = LHE.Con (LHE.Special LHE.ListCon)
 rebuildCon' (e:[]) = rebuildExp e
 rebuildCon' (e:es) = LHE.Paren (LHE.InfixApp (rebuildExp e) (LHE.QConOp (LHE.Special LHE.Cons)) (rebuildCon' es))
 rebuildCon' [] = error "Rebuilding empty list."
+
+{-|
+    Determines whether or not two supplied 'Term's match each other.
+-}
 
 match :: Term -> Term -> Bool
 match (Free x) (Free x') = x == x'
@@ -204,8 +302,16 @@ match (Tuple e f) (Tuple e' f') = match e e' && match f f'
 match (TupleLet{}) (TupleLet{}) = True
 match _ _ = False
 
+{-|
+    Given a 'Term', returns the set of 'FreeVar's within that 'Term'.
+-}
+
 free :: Term -> [FreeVar]
 free = free' []
+
+{-|
+    Given a 'Term', returns the set of 'FreeVar's within that 'Term' combined with a supplied set of 'FreeVars's.
+-}
 
 free' :: [FreeVar] -> Term -> [FreeVar]
 free' xs (Free x)
@@ -222,8 +328,16 @@ free' xs (Where t ds) = foldr (\(_, t') xs' -> free' xs' t') (free' xs t) ds
 free' xs (Tuple e e') = free' (free' xs e) e'
 free' xs (TupleLet _ _ e e') = free' (free' xs e) e'
 
-bound :: Term -> [Int]
+{-|
+    Given a 'Term', returns the set of 'BoundVar's within that 'Term'.
+-}
+
+bound :: Term -> [BoundVar]
 bound = bound' 0 []
+
+{-|
+    Given a 'Term', returns the set of 'BoundVar's within that 'Term' combined with a supplied set of 'BoundVar's.
+-}
 
 bound' :: Int -> [BoundVar] -> Term -> [BoundVar]
 bound' _ bs (Free _) = bs
@@ -241,8 +355,18 @@ bound' d bs (Where t ds) = foldr (\(_, t') bs' -> bound' d bs' t') (bound' d bs 
 bound' d bs (Tuple t t') = bound' d (bound' d bs t) t'
 bound' d bs (TupleLet _ _ t u) = bound' (d + 2) (bound' d bs t) u
 
+{-|
+    Given a 'Term' returns the set of function names, 'Fun's, called
+    with in the 'Term'.
+-}
+
 funs :: Term -> [FuncName]
 funs = funs' []
+
+{-|
+    Given a 'Term' returns the set of function names, 'Fun's, called
+    with in the 'Term', combined with a supplied set of 'FuncName's.
+-}
 
 funs' :: [FuncName] -> Term -> [FuncName]
 funs' fs (Free _) = fs
@@ -257,7 +381,14 @@ funs' fs (Where t ds) = foldr (\(_, t') fs' -> funs' fs' t') (funs' fs t) ds
 funs' fs (Tuple t u) = funs' (funs' fs t) u
 funs' fs (TupleLet _ _ t u) = funs' (funs' fs t) u
 
-shift :: BoundVar -> Int -> Term -> Term
+{-|
+    Shifts (increases) the binding level of supplied bound variable by a supplied depth within a supplied 'Term'.
+-}
+
+shift :: BoundVar -- ^ The bound variable to be shifted.
+      -> Int -- ^ The amount to shift the bound variable by.
+      -> Term -- ^ The 'Term' to shift the bound variable in.
+      -> Term
 shift 0 _ u = u
 shift _ _ (Free x) = Free x
 shift i d (Bound j)
@@ -273,7 +404,14 @@ shift i d (Where t ds) = Where (shift i d t) (map (second (shift i d)) ds)
 shift i d (Tuple t t') = Tuple (shift i d t) (shift i d t')
 shift i d (TupleLet x x' t u) = TupleLet x x' (shift i d t) (shift i (d + 2) u)
 
-subst :: BoundVar -> Term -> Term -> Term
+{-|
+    Substitutes a 'Term' at a supplied bound depth within another 'Term'.
+-}
+
+subst :: BoundVar -- ^ The depth to substitute the new 'Term' at.
+      -> Term -- ^ The 'Term' to be substituted at the supplied depth.
+      -> Term -- ^ The 'Term' that the substitution is to be performed on.
+      -> Term
 subst _ _ (Free x) = Free x
 subst i t (Bound i')
  | i' < i = Bound i'
@@ -289,7 +427,16 @@ subst i t (Where t' ds) = Where (subst i t t') (map (second (subst i t)) ds)
 subst i t (Tuple e e') = Tuple (subst i t e) (subst i t e')
 subst i t (TupleLet x x' e e') = TupleLet x x' (subst i t e) (subst (i + 2) t e')
 
-abstract :: Int -> FreeVar -> Term -> Term
+{-|
+    Abstracts a variable, binding it at a given depth using de Bruijn numbering.
+    
+    Shifts any other bound variables that it needs to as it goes.
+-}
+
+abstract :: Int -- ^ The depth to abstract the variable at. 
+         -> FreeVar -- ^ The variable name to be abstracted.
+         -> Term -- ^ The term to abstract the variable in.
+         -> Term
 abstract i b (Free x)
  | x == b = Bound i
  | otherwise = Free x
@@ -306,7 +453,15 @@ abstract i b (Where t ds) = Where (abstract i b t) (map (second (abstract i b)) 
 abstract i b (Tuple t t') = Tuple (abstract i b t) (abstract i b t')
 abstract i b (TupleLet x x' t t') = TupleLet x x' (abstract i b t) (abstract (i + 2) b t')
 
-rename :: [String] -> String -> String
+{-|
+    Renames a 'String' with respect to set of 'String's.
+    
+    Keeps adding "'"s to the supplied 'String' until it is unique with respect to the supplied set of 'String's.
+-}
+
+rename :: [String] -- ^ The set of existing 'String's.
+       -> String -- ^ The 'String' to be renamed.
+       -> String
 rename xs x
  | x `elem` xs = rename xs (x ++ "'")
  | otherwise = x

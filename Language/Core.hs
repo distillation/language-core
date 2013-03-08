@@ -1,3 +1,7 @@
+{-|
+    This module exports functionality for parsing and modifying Haskell programs according to our language model.
+-}
+
 module Language.Core(
     Program(Program),
     FuncName,
