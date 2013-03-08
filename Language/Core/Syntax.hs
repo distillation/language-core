@@ -57,7 +57,7 @@ data Term = Free FreeVar -- ^ Free variables.
           | Let String Term Term -- ^ Let abstraction
           | Where Term [Function] -- ^ Where expression: 'Term' with local 'Function's.
           | Tuple Term Term -- ^ Tuple term.
-          | TupleLet [String] Term Term -- ^ 'Let' abstraction with a tuple as its pattern.
+          | TupleLet [String] Term Term -- ^ 'Let' abstraction with a n-tuple as its pattern.
 
 {-|
     Represents the branches of a 'Case' 'Term'.
