@@ -28,9 +28,26 @@ testInequality = [inequalityTest (Free "var") (Free "var'"),
                   inequalityTest (TupleLet ["x","y","z"] (Tuple [Free "a", Free "b", Free "c"]) (Bound 0)) (TupleLet ["x","y","z"] (Tuple [Free "a", Free "b", Free "c"]) (Bound 2))]
 
 equalityTest :: (Eq a, Show a) => a -> Test
-equalityTest t = TestLabel ("Test equality for: " ++ show t) (TestCase (assertBool ("Equality test for " ++ show t ++ " failed") (t == t)))
+equalityTest t = TestCase (assertBool ("Equality test for " ++ show t ++ " failed") (t == t))
 
 inequalityTest :: (Eq a, Show a) => a -> a -> Test
-inequalityTest t t' = TestLabel ("Test inequality for: " ++ show t ++ " and " ++ show t') (TestCase (assertBool ("Inequality test for " ++ show t ++ " and " ++ show t' ++ " failed") (t /= t')))
+inequalityTest t t' = TestCase (assertBool ("Inequality test for " ++ show t ++ " and " ++ show t' ++ " failed") (t /= t'))
 
-tests = TestList (testEquality ++ testInequality)
+testAbstract = [(Bound 0) ~=? (abstract 0 "x" (Free "x")),
+                (Free "y") ~=? (abstract 0 "x" (Free "y")),
+                (Lambda "x" (Apply (Bound 1) (Bound 0))) ~=? (abstract 0 "y" (Lambda "x" (Apply (Free "y") (Bound 0)))),
+                (Lambda "x" (Apply (Free "z") (Bound 0))) ~=? (abstract 0 "y" (Lambda "x" (Apply (Free "z") (Bound 0)))),
+                (Con "ConsTransformer" [Bound 2, Free "z"]) ~=? (abstract 2 "y" (Con "ConsTransformer" [Free "y", Free "z"])),
+                (Apply (Bound 0) (Free "x")) ~=? (abstract 0 "y" (Apply (Free "y") (Free "x"))),
+                (Fun "f") ~=? (abstract 0 "x" (Fun "f")),
+                (Lambda "x" (Case (Bound 0) [Branch "ConsTransformer" ["x", "xs"] (Bound 3)])) ~=? (abstract 0 "z" (Lambda "x" (Case (Bound 0) [Branch "ConsTransformer" ["x", "xs"] (Free "z")]))),
+                (Let "x" (Bound 0) (Bound 0)) ~=? (abstract 0 "z" (Let "x" (Free "z") (Bound 0))),
+                (Where (Fun "x") [("x", Bound 0)]) ~=? (abstract 0 "y" (Where (Fun "x") [("x", Free "y")])),
+                (TupleLet ["x","y","z"] (Tuple [Bound 1, Bound 0, Free "c"]) (Bound 0)) ~=? abstract 0 "b" (abstract 0 "a" (TupleLet ["x","y","z"] (Tuple [Free "a", Free "b", Free "c"]) (Bound 0)))]
+
+testRename = ["x''" ~=? (rename ["x", "x'"] "x"),
+              "x" ~=? (rename ["y", "z"] "x"),
+              "x" ~=? (rename [] "x"),
+              "x'" ~=? (rename ["x","x''"] "x")]
+
+tests = TestList (testEquality ++ testInequality ++ testAbstract ++ testRename)
