@@ -388,8 +388,8 @@ funs' fs (TupleLet _ t u) = funs' (funs' fs t) u
     Shifts (increases) the binding level of supplied bound variable by a supplied depth within a supplied 'Term'.
 -}
 
-shift :: BoundVar -- ^ The bound variable to be shifted.
-      -> Int -- ^ The amount to shift the bound variable by.
+shift :: Int -- ^ The amount to shift the bound variable by.
+      -> BoundVar -- ^ The minimum bound depth to be shifted.
       -> Term -- ^ The 'Term' to shift the bound variable in.
       -> Term
 shift 0 _ u = u
