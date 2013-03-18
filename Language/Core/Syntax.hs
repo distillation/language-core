@@ -189,23 +189,13 @@ rebuildExp (Con c es) =
         cons = LHE.Con (LHE.UnQual (LHE.Ident c))
         args = map rebuildExp es
     in foldl LHE.App cons args
-rebuildExp (Apply (Apply (Fun f) x@(Free _)) y@(Free _))
- | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = LHE.InfixApp (rebuildExp x) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (rebuildExp y)
-rebuildExp (Apply (Apply (Fun f) x@(Free _)) y)
- | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = LHE.InfixApp (rebuildExp x) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (LHE.Paren (rebuildExp y))
-rebuildExp (Apply (Apply (Fun f) x) y@(Free _))
- | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = LHE.InfixApp (LHE.Paren (rebuildExp x)) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (rebuildExp y)
-rebuildExp (Apply (Apply (Fun f) x@(Fun _)) y@(Fun _))
- | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = LHE.InfixApp (rebuildExp x) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (rebuildExp y)
-rebuildExp (Apply (Apply (Fun f) x@(Fun _)) y)
- | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = LHE.InfixApp (rebuildExp x) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (LHE.Paren (rebuildExp y))
-rebuildExp (Apply (Apply (Fun f) x) y@(Fun _))
- | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = LHE.InfixApp (LHE.Paren (rebuildExp x)) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (rebuildExp y)
 rebuildExp (Apply (Apply (Fun f) x) y)
- | f `elem` ["par", "pseq", "+", "-", "/", "*", "div", "mod", "elem"] = LHE.InfixApp (LHE.Paren (rebuildExp x)) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (LHE.Paren (rebuildExp y))
+ | f `elem` ["par", "pseq"] = LHE.InfixApp (LHE.Paren (rebuildExp x)) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (LHE.Paren (rebuildExp y))
 rebuildExp (Apply e e') = LHE.App (rebuildExp e) (rebuildExp e')
 rebuildExp (Case e bs) = LHE.Case (rebuildExp e) (rebuildAlts bs)
-rebuildExp (Where e bs) = LHE.Let (LHE.BDecls (rebuildDecls bs)) (rebuildExp e)
+rebuildExp (Where e bs) 
+ | length bs == 0 = rebuildExp e
+ | otherwise = LHE.Let (LHE.BDecls (rebuildDecls bs)) (rebuildExp e)
 rebuildExp (Bound i) = LHE.Var (LHE.UnQual (LHE.Ident (show i)))
 rebuildExp (Tuple es) = LHE.Tuple (map rebuildExp es)
 rebuildExp (TupleLet xs e e') = 
