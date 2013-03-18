@@ -189,18 +189,6 @@ rebuildExp (Con c es) =
         cons = LHE.Con (LHE.UnQual (LHE.Ident c))
         args = map rebuildExp es
     in foldl LHE.App cons args
-rebuildExp (Apply (Apply (Fun f) x@(Free _)) y@(Free _))
- | f `elem` ["par", "pseq"] = LHE.InfixApp (rebuildExp x) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (rebuildExp y)
-rebuildExp (Apply (Apply (Fun f) x@(Free _)) y)
- | f `elem` ["par", "pseq"] = LHE.InfixApp (rebuildExp x) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (LHE.Paren (rebuildExp y))
-rebuildExp (Apply (Apply (Fun f) x) y@(Free _))
- | f `elem` ["par", "pseq"] = LHE.InfixApp (LHE.Paren (rebuildExp x)) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (rebuildExp y)
-rebuildExp (Apply (Apply (Fun f) x@(Fun _)) y@(Fun _))
- | f `elem` ["par", "pseq"] = LHE.InfixApp (rebuildExp x) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (rebuildExp y)
-rebuildExp (Apply (Apply (Fun f) x@(Fun _)) y)
- | f `elem` ["par", "pseq"] = LHE.InfixApp (rebuildExp x) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (LHE.Paren (rebuildExp y))
-rebuildExp (Apply (Apply (Fun f) x) y@(Fun _))
- | f `elem` ["par", "pseq"] = LHE.InfixApp (LHE.Paren (rebuildExp x)) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (rebuildExp y)
 rebuildExp (Apply (Apply (Fun f) x) y)
  | f `elem` ["par", "pseq"] = LHE.InfixApp (LHE.Paren (rebuildExp x)) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (LHE.Paren (rebuildExp y))
 rebuildExp (Apply e e') = LHE.App (rebuildExp e) (rebuildExp e')
