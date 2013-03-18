@@ -32,6 +32,16 @@ equalityTest t = TestCase (assertBool ("Equality test for " ++ show t ++ " faile
 inequalityTest :: (Eq a, Show a) => a -> a -> Test
 inequalityTest t t' = TestCase (assertBool ("Inequality test for " ++ show t ++ " and " ++ show t' ++ " failed") (t /= t'))
 
+testRebuildExp = [(LHE.Var (LHE.UnQual (LHE.Ident "v"))) ~=? (rebuildExp (Free "v")),
+                  (LHE.Lambda (LHE.SrcLoc "" 0 0) [LHE.PVar (LHE.Ident "v")] (LHE.Var (LHE.UnQual (LHE.Ident "v")))) ~=? (rebuildExp (Lambda "v" (Bound 0)))]
+
+testRebuildInt = [(LHE.Lit (LHE.Int 0)) ~=? (rebuildInt (Con "Z" [])),
+                  (LHE.Lit (LHE.Int 1)) ~=? (rebuildInt (Con "S" [Con "Z" []])),
+                  (LHE.Lit (LHE.Int 2)) ~=? (rebuildInt (Con "S" [Con "S" [Con "Z" []]]))]
+
+testRebuildString = ["a" ~=? (rebuildString (Con "a" [])),
+                     "abc" ~=? (rebuildString (Con "a" [Con "b" [Con "c" []]]))]
+
 testRebuildAlt = [(makeAlt (LHE.PList []) (LHE.Var (LHE.UnQual (LHE.Ident "v")))) ~=? (rebuildAlt (Branch "NilTransformer" [] (Free "v"))),
                   (makeAlt (LHE.PParen (LHE.PInfixApp (LHE.PVar (LHE.Ident "x")) (LHE.Special LHE.Cons) (LHE.PList []))) (LHE.Var (LHE.UnQual (LHE.Ident "x")))) ~=? (rebuildAlt (Branch "ConsTransformer" ["x"] (Bound 0))),
                   (makeAlt (LHE.PParen (LHE.PInfixApp (LHE.PVar (LHE.Ident "x")) (LHE.Special LHE.Cons) (LHE.PVar (LHE.Ident "xs")))) (LHE.App (LHE.Var (LHE.UnQual (LHE.Ident "sumList"))) (LHE.Var (LHE.UnQual (LHE.Ident "xs"))))) ~=? (rebuildAlt (Branch "ConsTransformer" ["x","xs"] (Apply (Fun "sumList") (Bound 0)))),
@@ -191,6 +201,9 @@ testRename = ["x''" ~=? (rename ["x", "x'"] "x"),
 
 tests = TestList (testEquality ++ 
                   testInequality ++
+                  testRebuildExp ++
+                  testRebuildInt ++
+                  testRebuildString ++
                   testRebuildAlt ++
                   testRebuildCon ++
                   testMatch ++
