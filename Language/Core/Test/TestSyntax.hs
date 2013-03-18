@@ -3,7 +3,6 @@ module Language.Core.Test.TestSyntax(tests) where
 import Language.Core.Syntax
 import Test.HUnit
 import qualified Language.Haskell.Exts as LHE
--- import Test.HUnit.Tools(assertRaises)
 
 testEquality = [equalityTest (Free "var"),
                 equalityTest (Lambda "x" (Bound 0)),
@@ -32,6 +31,41 @@ equalityTest t = TestCase (assertBool ("Equality test for " ++ show t ++ " faile
 
 inequalityTest :: (Eq a, Show a) => a -> a -> Test
 inequalityTest t t' = TestCase (assertBool ("Inequality test for " ++ show t ++ " and " ++ show t' ++ " failed") (t /= t'))
+
+testRebuildAlt = [(makeAlt (LHE.PList []) (LHE.Var (LHE.UnQual (LHE.Ident "v")))) ~=? (rebuildAlt (Branch "NilTransformer" [] (Free "v"))),
+                  (makeAlt (LHE.PParen (LHE.PInfixApp (LHE.PVar (LHE.Ident "x")) (LHE.Special LHE.Cons) (LHE.PList []))) (LHE.Var (LHE.UnQual (LHE.Ident "x")))) ~=? (rebuildAlt (Branch "ConsTransformer" ["x"] (Bound 0))),
+                  (makeAlt (LHE.PParen (LHE.PInfixApp (LHE.PVar (LHE.Ident "x")) (LHE.Special LHE.Cons) (LHE.PVar (LHE.Ident "xs")))) (LHE.App (LHE.Var (LHE.UnQual (LHE.Ident "sumList"))) (LHE.Var (LHE.UnQual (LHE.Ident "xs"))))) ~=? (rebuildAlt (Branch "ConsTransformer" ["x","xs"] (Apply (Fun "sumList") (Bound 0)))),
+                  (makeAlt (LHE.PApp (LHE.UnQual (LHE.Ident "JoinList")) [(LHE.PVar (LHE.Ident "x")), (LHE.PVar (LHE.Ident "y"))]) (LHE.Var (LHE.UnQual (LHE.Ident "y")))) ~=? (rebuildAlt (Branch "JoinList" ["x", "y"] (Bound 0)))]
+    
+makeAlt pat expr = LHE.Alt (LHE.SrcLoc "" 0 0) pat (LHE.UnGuardedAlt expr) (LHE.BDecls [])
+
+testMatch = [True ~=? (match (Free "x") (Free "x")),
+             False ~=? (match (Free "x") (Free "y")),
+             True ~=? (match (Bound 0) (Bound 0)),
+             False ~=? (match (Bound 1) (Bound 90)),
+             False ~=? (match (Lambda "x" (Bound 0)) (Free "y")),
+             True ~=? (match (Lambda "x" (Bound 0)) (Lambda "x" (Bound 1))),
+             True ~=? (match (Con "c" [Bound 1, Free "x"]) (Con "c" [Bound 1, Free "x"])),
+             False ~=? (match (Con "c" []) (Con "d" [])),
+             False ~=? (match (Con "c" [Bound 1, Free "x"]) (Con "c" [Free "x"])),
+             True ~=? (match (Apply (Free "x") (Bound 0)) (Apply (Free "x") (Bound 0))),
+             True ~=? (match (Apply (Free "x") (Bound 0)) (Apply (Free "x") (Bound 1))),
+             False ~=? (match (Apply (Free "x") (Bound 0)) (Apply (Bound 0) (Bound 1))),
+             True ~=? (match (Fun "f") (Fun "f")),
+             False ~=? (match (Fun "f") (Fun "g")),
+             True ~=? (match (Case (Bound 0) [Branch "ConsTransformer" ["x", "xs"] (Bound 0)]) (Case (Bound 0) [Branch "ConsTransformer" ["x", "xs"] (Bound 0)])),
+             False ~=? (match (Case (Bound 0) [Branch "ConsTransformer" ["x", "xs"] (Bound 0)]) (Case (Bound 0) [Branch "ConsTransformer" ["x"] (Bound 0)])),
+             False ~=? (match (Case (Bound 0) [Branch "ConsTransformer" ["x", "xs"] (Bound 0)]) (Case (Bound 0) [Branch "ConsTransformer'" ["x", "xs"] (Bound 0)])),
+             False ~=? (match (Case (Bound 0) [Branch "ConsTransformer" ["x", "xs"] (Bound 0)]) (Case (Bound 0) [Branch "ConsTransformer'" ["x"] (Bound 0)])),
+             True ~=? (match (Let "x" (Free "x") (Bound 0)) (Let "x" (Free "x") (Bound 0))),
+             True ~=? (match (Where (Free "x") [("f", Bound 0), ("g", Bound 1)]) (Where (Free "x") [("f", Bound 0), ("g", Bound 1)])),
+             False ~=? (match (Where (Free "x") [("f", Bound 0), ("g", Bound 1)]) (Where (Free "x") [("f", Bound 0)])),
+             True ~=? (match (Tuple [Free "x", Bound 0]) (Tuple [Free "x", Bound 0])),
+             False ~=? (match (Tuple [Free "x", Bound 0]) (Tuple [Bound 0, Free "x"])),
+             False ~=? (match (Tuple [Free "x"]) (Tuple [Free "x", Bound 0])),
+             True ~=? (match (TupleLet ["a", "b", "c"] (Bound 0) (Bound 1)) (TupleLet ["a", "b", "c"] (Bound 0) (Bound 1))),
+             False ~=? (match (TupleLet ["a", "b", "c"] (Bound 0) (Bound 1)) (TupleLet ["a", "b"] (Bound 0) (Bound 1))),
+             False ~=? (match (Free "x") (Bound 0))]
 
 testFree = [["x"] ~=? (free (Free "x")),
             [] ~=? (free (Bound 0)),
@@ -151,6 +185,8 @@ testRename = ["x''" ~=? (rename ["x", "x'"] "x"),
 
 tests = TestList (testEquality ++ 
                   testInequality ++
+                  testRebuildAlt ++
+                  testMatch ++
                   testFree ++
                   testBound ++
                   testFuns ++
