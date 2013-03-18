@@ -301,8 +301,8 @@ match (Fun f) (Fun f') = f == f'
 match (Case _ bs) (Case _ bs') = (length bs == length bs') && all (\(Branch c xs _, Branch c' xs' _) -> c == c' && length xs == length xs') (zip bs bs')
 match (Let{}) (Let{}) = True
 match (Where _ ds) (Where _ ds') = length ds == length ds'
-match (Tuple es) (Tuple es') = all (\(e, e') ->  match e e') (zip es es')
-match (TupleLet{}) (TupleLet{}) = True
+match (Tuple es) (Tuple es') = length es == length es' && all (\(e, e') ->  match e e') (zip es es')
+match (TupleLet ds _ _) (TupleLet ds' _ _) = length ds == length ds'
 match _ _ = False
 
 {-|
