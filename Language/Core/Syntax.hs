@@ -193,7 +193,9 @@ rebuildExp (Apply (Apply (Fun f) x) y)
  | f `elem` ["par", "pseq"] = LHE.InfixApp (LHE.Paren (rebuildExp x)) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (LHE.Paren (rebuildExp y))
 rebuildExp (Apply e e') = LHE.App (rebuildExp e) (rebuildExp e')
 rebuildExp (Case e bs) = LHE.Case (rebuildExp e) (rebuildAlts bs)
-rebuildExp (Where e bs) = LHE.Let (LHE.BDecls (rebuildDecls bs)) (rebuildExp e)
+rebuildExp (Where e bs) 
+ | length bs == 0 = rebuildExp e
+ | otherwise = LHE.Let (LHE.BDecls (rebuildDecls bs)) (rebuildExp e)
 rebuildExp (Bound i) = LHE.Var (LHE.UnQual (LHE.Ident (show i)))
 rebuildExp (Tuple es) = LHE.Tuple (map rebuildExp es)
 rebuildExp (TupleLet xs e e') = 
