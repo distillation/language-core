@@ -257,6 +257,7 @@ rebuildAlt (Branch "ConsTransformer" (x:[]) e) = -- only allow for cons of size 
         pat = LHE.PParen (LHE.PInfixApp (LHE.PVar (LHE.Ident v)) (LHE.Special LHE.Cons) (LHE.PList []))
         body = subst 0 (Free v) e
     in LHE.Alt (LHE.SrcLoc "" 0 0) pat (LHE.UnGuardedAlt (rebuildExp body)) (LHE.BDecls [])
+-- TODO: Allow for n cons.
 rebuildAlt (Branch "ConsTransformer" args@(_:_:[]) e) = -- only allow for cons of size 2 for parallelization
     let fv = foldr (\x fv' -> rename fv' x:fv') (free e) args
         args'@(v:v':[]) = take (length args) fv
@@ -301,8 +302,8 @@ match (Fun f) (Fun f') = f == f'
 match (Case _ bs) (Case _ bs') = (length bs == length bs') && all (\(Branch c xs _, Branch c' xs' _) -> c == c' && length xs == length xs') (zip bs bs')
 match (Let{}) (Let{}) = True
 match (Where _ ds) (Where _ ds') = length ds == length ds'
-match (Tuple es) (Tuple es') = all (\(e, e') ->  match e e') (zip es es')
-match (TupleLet{}) (TupleLet{}) = True
+match (Tuple es) (Tuple es') = length es == length es' && all (\(e, e') ->  match e e') (zip es es')
+match (TupleLet ds _ _) (TupleLet ds' _ _) = length ds == length ds'
 match _ _ = False
 
 {-|
