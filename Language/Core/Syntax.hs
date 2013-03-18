@@ -257,6 +257,7 @@ rebuildAlt (Branch "ConsTransformer" (x:[]) e) = -- only allow for cons of size 
         pat = LHE.PParen (LHE.PInfixApp (LHE.PVar (LHE.Ident v)) (LHE.Special LHE.Cons) (LHE.PList []))
         body = subst 0 (Free v) e
     in LHE.Alt (LHE.SrcLoc "" 0 0) pat (LHE.UnGuardedAlt (rebuildExp body)) (LHE.BDecls [])
+-- TODO: Allow for n cons.
 rebuildAlt (Branch "ConsTransformer" args@(_:_:[]) e) = -- only allow for cons of size 2 for parallelization
     let fv = foldr (\x fv' -> rename fv' x:fv') (free e) args
         args'@(v:v':[]) = take (length args) fv
