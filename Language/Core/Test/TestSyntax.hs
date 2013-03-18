@@ -33,6 +33,69 @@ equalityTest t = TestCase (assertBool ("Equality test for " ++ show t ++ " faile
 inequalityTest :: (Eq a, Show a) => a -> a -> Test
 inequalityTest t t' = TestCase (assertBool ("Inequality test for " ++ show t ++ " and " ++ show t' ++ " failed") (t /= t'))
 
+testFree = [["x"] ~=? (free (Free "x")),
+            [] ~=? (free (Bound 0)),
+            ["x"] ~=? (free (Lambda "x" (Free "x"))),
+            [] ~=? (free (Lambda "x" (Fun "fun"))),
+            [] ~=? (free (Lambda "x" (Apply (Fun "fun") (Fun "fun'")))),
+            ["x"] ~=? (free (Con "ConsTransformer" [Free "x", Con "NilTransformer" []])),
+            ["fun", "fun'"] ~=? (free (Con "ConsTransformer" [Free "fun", Free "fun'"])),
+            ["x"] ~=? (free (Apply (Fun "f") (Free "x"))),
+            [] ~=? (free (Fun "f")),
+            [] ~=? (free (Lambda "x" (Case (Bound 0) [Branch "ConsTransformer" ["x", "xs"] (Bound 0)]))),
+            ["x", "y"] ~=? (free (Lambda "x" (Case (Bound 0) [Branch "ConsTransformer" ["x", "xs"] (Con "ConsTransformer" [Free "x", Free "y"])]))),
+            [] ~=? (free (Let "x" (Fun "var") (Bound 0))),
+            ["var"] ~=? (free (Let "x" (Free "var") (Fun "x"))),
+            ["x"] ~=? (free (Where (Fun "x") [("x", Free "x")])),
+            [] ~=? (free (Where (Fun "x") [("x", Fun "x")])),
+            ["x", "y"] ~=? (free (Where (Free "x") [("x", Free "y")])),
+            [] ~=? (free (Lambda "x" (Lambda "y" (Tuple [Bound 0, Bound 1])))),
+            ["x", "y"] ~=? (free (Lambda "x" (Lambda "y" (Tuple [Free "x", Free "y"])))),
+            ["a", "b", "c"] ~=? (free (TupleLet ["x","y","z"] (Tuple [Free "a", Free "b", Free "c"]) (Bound 0))),
+            [] ~=? (free (TupleLet ["x","y","z"] (Tuple [Fun "a", Fun "b", Fun "c"]) (Bound 0)))]
+
+testBound = [[] ~=? (bound (Free "x")),
+             [0] ~=? (bound (Bound 0)),
+             [] ~=? (bound (Lambda "x" (Free "x"))),
+             [] ~=? (bound (Lambda "x" (Bound 0))),
+             [0] ~=? (bound (Lambda "x" (Apply (Bound 0) (Bound 1)))),
+             [] ~=? (bound (Con "ConsTransformer" [Free "x", Con "NilTransformer" []])),
+             [0, 1] ~=? (bound (Con "ConsTransformer" [Bound 0, Bound 1])),
+             [1] ~=? (bound (Apply (Bound 1) (Free "x"))),
+             [0] ~=? (bound (Bound 0)),
+             [] ~=? (bound (Lambda "x" (Case (Bound 0) [Branch "ConsTransformer" ["x", "xs"] (Bound 0)]))),
+             [] ~=? (bound (Lambda "x" (Case (Bound 0) [Branch "ConsTransformer" ["x", "xs"] (Con "ConsTransformer" [Fun "x", Fun "y"])]))),
+             [] ~=? (bound (Let "x" (Free "var") (Bound 0))),
+             [] ~=? (bound (Let "x" (Free "var") (Fun "x"))),
+             [0] ~=? (bound (Where (Fun "x") [("x", Bound 0)])),
+             [0, 1] ~=? (bound (Where (Bound 0) [("x", Bound 1)])),
+             [] ~=? (bound (Where (Fun "x") [("x", Fun "y")])),
+             [] ~=? (bound (Lambda "x" (Lambda "y" (Tuple [Bound 0, Bound 1])))),
+             [] ~=? (bound (Lambda "x" (Lambda "y" (Tuple [Fun "x", Fun "y"])))),
+             [] ~=? (bound (TupleLet ["x","y","z"] (Tuple [Free "a", Free "b", Free "c"]) (Bound 0))),
+             [3, 2, 1] ~=? (bound (TupleLet ["x","y","z"] (Tuple [Bound 3, Bound 2, Bound 1]) (Bound 0)))]
+
+testFuns = [[] ~=? (funs (Free "x")),
+            [] ~=? (funs (Bound 0)),
+            [] ~=? (funs (Lambda "x" (Free "x"))),
+            ["fun"] ~=? (funs (Lambda "x" (Fun "fun"))),
+            ["fun", "fun'"] ~=? (funs (Lambda "x" (Apply (Fun "fun") (Fun "fun'")))),
+            [] ~=? (funs (Con "ConsTransformer" [Free "x", Con "NilTransformer" []])),
+            ["fun", "fun'"] ~=? (funs (Con "ConsTransformer" [Fun "fun", Fun "fun'"])),
+            ["f"] ~=? (funs (Apply (Fun "f") (Free "x"))),
+            ["f"] ~=? (funs (Fun "f")),
+            [] ~=? (funs (Lambda "x" (Case (Bound 0) [Branch "ConsTransformer" ["x", "xs"] (Bound 0)]))),
+            ["x", "y"] ~=? (funs (Lambda "x" (Case (Bound 0) [Branch "ConsTransformer" ["x", "xs"] (Con "ConsTransformer" [Fun "x", Fun "y"])]))),
+            [] ~=? (funs (Let "x" (Free "var") (Bound 0))),
+            ["x"] ~=? (funs (Let "x" (Free "var") (Fun "x"))),
+            ["x"] ~=? (funs (Where (Fun "x") [("x", Free "x")])),
+            ["x", "x"] ~=? (funs (Where (Fun "x") [("x", Fun "x")])),
+            ["x", "y"] ~=? (funs (Where (Fun "x") [("x", Fun "y")])),
+            [] ~=? (funs (Lambda "x" (Lambda "y" (Tuple [Bound 0, Bound 1])))),
+            ["x", "y"] ~=? (funs (Lambda "x" (Lambda "y" (Tuple [Fun "x", Fun "y"])))),
+            [] ~=? (funs (TupleLet ["x","y","z"] (Tuple [Free "a", Free "b", Free "c"]) (Bound 0))),
+            ["a", "b", "c"] ~=? (funs (TupleLet ["x","y","z"] (Tuple [Fun "a", Fun "b", Fun "c"]) (Bound 0)))]
+
 testShift = [(Free "x") ~=? (shift 0 1 (Free "x")),
              (Free "a") ~=? (shift 1 1 (Free "a")),
              (Bound 2) ~=? (shift 1 1 (Bound 1)),
@@ -88,6 +151,9 @@ testRename = ["x''" ~=? (rename ["x", "x'"] "x"),
 
 tests = TestList (testEquality ++ 
                   testInequality ++
+                  testFree ++
+                  testBound ++
+                  testFuns ++
                   testShift ++ 
                   testSubst ++
                   testAbstract ++ 
