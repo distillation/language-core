@@ -39,6 +39,12 @@ testRebuildAlt = [(makeAlt (LHE.PList []) (LHE.Var (LHE.UnQual (LHE.Ident "v")))
     
 makeAlt pat expr = LHE.Alt (LHE.SrcLoc "" 0 0) pat (LHE.UnGuardedAlt expr) (LHE.BDecls [])
 
+testRebuildCon = [(LHE.Paren (LHE.InfixApp (LHE.Var (LHE.UnQual (LHE.Ident "v"))) (LHE.QConOp (LHE.Special LHE.Cons)) (LHE.Con (LHE.Special LHE.ListCon)))) ~=? (rebuildCon (Free "v":[])),
+                  (LHE.Paren (LHE.InfixApp (LHE.Con (LHE.Special LHE.ListCon)) (LHE.QConOp (LHE.Special LHE.Cons)) (LHE.Con (LHE.Special LHE.ListCon)))) ~=? (rebuildCon (Con "NilTransformer" []:[])),
+                  (LHE.Paren (LHE.InfixApp (LHE.Var (LHE.UnQual (LHE.Ident "x"))) (LHE.QConOp (LHE.Special LHE.Cons)) (LHE.Var (LHE.UnQual (LHE.Ident "y"))))) ~=? (rebuildCon ([Free "x", Free "y"])),
+                  (LHE.Paren (LHE.InfixApp (LHE.Var (LHE.UnQual (LHE.Ident "x"))) (LHE.QConOp (LHE.Special LHE.Cons)) (LHE.Paren (LHE.InfixApp (LHE.Var (LHE.UnQual (LHE.Ident "y"))) (LHE.QConOp (LHE.Special LHE.Cons)) (LHE.Var (LHE.UnQual (LHE.Ident "z"))))))) ~=? (rebuildCon ([Free "x", Free "y", Free "z"])),
+                  (LHE.Paren (LHE.InfixApp (LHE.Var (LHE.UnQual (LHE.Ident "x"))) (LHE.QConOp (LHE.Special LHE.Cons)) (LHE.Paren (LHE.InfixApp (LHE.Var (LHE.UnQual (LHE.Ident "y"))) (LHE.QConOp (LHE.Special LHE.Cons)) (LHE.Paren (LHE.InfixApp (LHE.Var (LHE.UnQual (LHE.Ident "z"))) (LHE.QConOp (LHE.Special LHE.Cons)) (LHE.Con (LHE.Special LHE.ListCon)))))))) ~=? (rebuildCon ([Free "x", Free "y", Free "z", Con "NilTransformer" []]))]
+
 testMatch = [True ~=? (match (Free "x") (Free "x")),
              False ~=? (match (Free "x") (Free "y")),
              True ~=? (match (Bound 0) (Bound 0)),
@@ -186,6 +192,7 @@ testRename = ["x''" ~=? (rename ["x", "x'"] "x"),
 tests = TestList (testEquality ++ 
                   testInequality ++
                   testRebuildAlt ++
+                  testRebuildCon ++
                   testMatch ++
                   testFree ++
                   testBound ++
