@@ -377,10 +377,10 @@ funs' fs (Bound _) = fs
 funs' fs (Lambda _ t) = funs' fs t
 funs' fs (Con _ ts) = foldr (flip funs') fs ts
 funs' fs (Fun f) = f:fs
-funs' fs (Apply t u) = funs' (funs' fs t) u
+funs' fs (Apply t u) = funs' (funs' fs u) t
 funs' fs (Case t bs) = foldr (\(Branch _ _ t') fs' -> funs' fs' t') (funs' fs t) bs
 funs' fs (Let _ t u) = funs' (funs' fs t) u
-funs' fs (Where t ds) = foldr (\(_, t') fs' -> funs' fs' t') (funs' fs t) ds
+funs' fs (Where t ds) = funs' (foldr (\(_, t') fs' -> funs' fs' t') fs ds) t
 funs' fs (Tuple es) = foldr (\e fs' -> funs' fs' e) fs es
 funs' fs (TupleLet _ t u) = funs' (funs' fs t) u
 
