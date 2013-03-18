@@ -32,8 +32,42 @@ equalityTest t = TestCase (assertBool ("Equality test for " ++ show t ++ " faile
 inequalityTest :: (Eq a, Show a) => a -> a -> Test
 inequalityTest t t' = TestCase (assertBool ("Inequality test for " ++ show t ++ " and " ++ show t' ++ " failed") (t /= t'))
 
+testRebuildQualConDecl = [(LHE.QualConDecl (LHE.SrcLoc "" 0 0) [] [] (LHE.ConDecl (LHE.Ident "List") [LHE.UnBangedTy (LHE.TyVar (LHE.Ident "name")), (LHE.UnBangedTy (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "name"))) (LHE.TyVar (LHE.Ident "var")))), (LHE.UnBangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "name"))) (LHE.TyVar (LHE.Ident "var"))) (LHE.TyVar (LHE.Ident "var'"))))])) ~=? (rebuildConDecl ("List", [makeBangDataType "name" [], makeBangDataType "name" ["var"], makeBangDataType "name" ["var", "var'"]]))]
+
+testRebuildBangType = [(LHE.UnBangedTy (LHE.TyVar (LHE.Ident "name"))) ~=? (rebuildBangType (makeBangDataType "name" [])),
+                       (LHE.UnBangedTy (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "name"))) (LHE.TyVar (LHE.Ident "var")))) ~=? (rebuildBangType (makeBangDataType "name" ["var"])),
+                       (LHE.UnBangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "name"))) (LHE.TyVar (LHE.Ident "var"))) (LHE.TyVar (LHE.Ident "var'")))) ~=? (rebuildBangType (makeBangDataType "name" ["var", "var'"]))]
+
+makeBangDataType name vars = DataType name vars [] LHE.DataType Nothing []
+
+testRebuildDecl = [(makeDecl "f" (LHE.Var (LHE.UnQual (LHE.Ident "v")))) ~=? (rebuildDecl ("f", Free "v")),
+                   (makeDecl "f'" (LHE.Case (LHE.Var (LHE.UnQual (LHE.Ident "x"))) [(makeAlt (LHE.PList []) (LHE.Var (LHE.UnQual (LHE.Ident "v")))), (makeAlt (LHE.PParen (LHE.PInfixApp (LHE.PVar (LHE.Ident "x")) (LHE.Special LHE.Cons) (LHE.PList []))) (LHE.Var (LHE.UnQual (LHE.Ident "x"))))])) ~=? (rebuildDecl ("f'", (Case (Free "x") [Branch "NilTransformer" [] (Free "v"), Branch "ConsTransformer" ["x"] (Bound 0)])))]
+
+makeDecl n e = (LHE.FunBind [LHE.Match (LHE.SrcLoc "" 0 0) (LHE.Ident n) [] Nothing (LHE.UnGuardedRhs e) (LHE.BDecls [])])
+
 testRebuildExp = [(LHE.Var (LHE.UnQual (LHE.Ident "v"))) ~=? (rebuildExp (Free "v")),
-                  (LHE.Lambda (LHE.SrcLoc "" 0 0) [LHE.PVar (LHE.Ident "v")] (LHE.Var (LHE.UnQual (LHE.Ident "v")))) ~=? (rebuildExp (Lambda "v" (Bound 0)))]
+                  (LHE.Lambda (LHE.SrcLoc "" 0 0) [LHE.PVar (LHE.Ident "v")] (LHE.Var (LHE.UnQual (LHE.Ident "v")))) ~=? (rebuildExp (Lambda "v" (Bound 0))),
+                  (LHE.Let (LHE.BDecls [LHE.FunBind [LHE.Match (LHE.SrcLoc "" 0 0) (LHE.Ident "v") [] Nothing (LHE.UnGuardedRhs (LHE.Var (LHE.UnQual (LHE.Ident "v'")))) (LHE.BDecls [])]]) (LHE.Var (LHE.UnQual (LHE.Ident "v")))) ~=? (rebuildExp (Let "v" (Free "v'") (Bound 0))),
+                  (LHE.Var (LHE.UnQual (LHE.Ident "funName"))) ~=? (rebuildExp (Fun "funName")),
+                  (LHE.Lit (LHE.Int 0)) ~=? (rebuildExp (Con "Z" [])),
+                  (LHE.Lit (LHE.Int 1)) ~=? (rebuildExp (Con "S" [Con "Z" []])),
+                  (LHE.Lit (LHE.Int 2)) ~=? (rebuildExp (Con "S" [Con "S" [Con "Z" []]])),
+                  (LHE.Lit (LHE.String "a")) ~=? (rebuildExp (Con "StringTransformer" [Con "a" []])),
+                  (LHE.Lit (LHE.String "abc")) ~=? (rebuildExp (Con "StringTransformer" [Con "a" [Con "b" [Con "c" []]]])),
+                  (LHE.Lit (LHE.Char 'c')) ~=? (rebuildExp (Con "CharTransformer" [Con "c" []])),
+                  (LHE.Con (LHE.Special LHE.ListCon)) ~=? (rebuildExp (Con "NilTransformer" [])),
+                  (LHE.Paren (LHE.InfixApp (LHE.Var (LHE.UnQual (LHE.Ident "v"))) (LHE.QConOp (LHE.Special LHE.Cons)) (LHE.Con (LHE.Special LHE.ListCon)))) ~=? (rebuildExp (Con "ConsTransformer" (Free "v":[]))),
+                  (LHE.Paren (LHE.InfixApp (LHE.Con (LHE.Special LHE.ListCon)) (LHE.QConOp (LHE.Special LHE.Cons)) (LHE.Con (LHE.Special LHE.ListCon)))) ~=? (rebuildExp (Con "ConsTransformer" (Con "NilTransformer" []:[]))),
+                  (LHE.Paren (LHE.InfixApp (LHE.Var (LHE.UnQual (LHE.Ident "x"))) (LHE.QConOp (LHE.Special LHE.Cons)) (LHE.Var (LHE.UnQual (LHE.Ident "y"))))) ~=? (rebuildExp (Con "ConsTransformer" [Free "x", Free "y"])),
+                  (LHE.Paren (LHE.InfixApp (LHE.Var (LHE.UnQual (LHE.Ident "x"))) (LHE.QConOp (LHE.Special LHE.Cons)) (LHE.Paren (LHE.InfixApp (LHE.Var (LHE.UnQual (LHE.Ident "y"))) (LHE.QConOp (LHE.Special LHE.Cons)) (LHE.Var (LHE.UnQual (LHE.Ident "z"))))))) ~=? (rebuildExp (Con "ConsTransformer" [Free "x", Free "y", Free "z"])),
+                  (LHE.Paren (LHE.InfixApp (LHE.Var (LHE.UnQual (LHE.Ident "x"))) (LHE.QConOp (LHE.Special LHE.Cons)) (LHE.Paren (LHE.InfixApp (LHE.Var (LHE.UnQual (LHE.Ident "y"))) (LHE.QConOp (LHE.Special LHE.Cons)) (LHE.Paren (LHE.InfixApp (LHE.Var (LHE.UnQual (LHE.Ident "z"))) (LHE.QConOp (LHE.Special LHE.Cons)) (LHE.Con (LHE.Special LHE.ListCon)))))))) ~=? (rebuildExp (Con "ConsTransformer" [Free "x", Free "y", Free "z", Con "NilTransformer" []])),
+                  (LHE.App (LHE.App (LHE.Con (LHE.UnQual (LHE.Ident "Just"))) (LHE.Var (LHE.UnQual (LHE.Ident "x")))) (LHE.Var (LHE.UnQual (LHE.Ident "y")))) ~=? (rebuildExp (Con "Just" [Free "x", Free "y"])),
+                  (LHE.InfixApp (LHE.Paren (LHE.Var (LHE.UnQual (LHE.Ident "x")))) (LHE.QVarOp (LHE.UnQual (LHE.Ident "pseq"))) (LHE.Paren (LHE.Var (LHE.UnQual (LHE.Ident "y"))))) ~=? (rebuildExp (Apply (Apply (Fun "pseq") (Free "x")) (Free "y"))),
+                  (LHE.InfixApp (LHE.Paren (LHE.Var (LHE.UnQual (LHE.Ident "x")))) (LHE.QVarOp (LHE.UnQual (LHE.Ident "par"))) (LHE.Paren (LHE.Var (LHE.UnQual (LHE.Ident "y"))))) ~=? (rebuildExp (Apply (Apply (Fun "par") (Free "x")) (Free "y"))),
+                  (LHE.App (LHE.Var (LHE.UnQual (LHE.Ident "x"))) (LHE.Lit (LHE.String "abc"))) ~=? (rebuildExp (Apply (Free "x") (Con "StringTransformer" [Con "a" [Con "b" [Con "c" []]]]))),
+                  (LHE.Case (LHE.Var (LHE.UnQual (LHE.Ident "x"))) [(makeAlt (LHE.PList []) (LHE.Var (LHE.UnQual (LHE.Ident "v")))), (makeAlt (LHE.PParen (LHE.PInfixApp (LHE.PVar (LHE.Ident "x")) (LHE.Special LHE.Cons) (LHE.PList []))) (LHE.Var (LHE.UnQual (LHE.Ident "x"))))]) ~=? (rebuildExp (Case (Free "x") [Branch "NilTransformer" [] (Free "v"), Branch "ConsTransformer" ["x"] (Bound 0)])),
+                  (LHE.Tuple [(LHE.Var (LHE.UnQual (LHE.Ident "v"))), (LHE.Lit (LHE.Int 2)), (LHE.Lit (LHE.String "abc"))]) ~=? (rebuildExp (Tuple [Free "v", Con "S" [Con "S" [Con "Z" []]], Con "StringTransformer" [Con "a" [Con "b" [Con "c" []]]]])),
+                  (LHE.Let (LHE.BDecls [LHE.PatBind (LHE.SrcLoc "" 0 0) (LHE.PTuple [LHE.PVar (LHE.Ident "x"), LHE.PVar (LHE.Ident "y")]) Nothing (LHE.UnGuardedRhs (LHE.App (LHE.Var (LHE.UnQual (LHE.Ident "f"))) (LHE.Var (LHE.UnQual (LHE.Ident "g"))))) (LHE.BDecls [])]) (LHE.App (LHE.Var (LHE.UnQual (LHE.Ident "y"))) (LHE.Var (LHE.UnQual (LHE.Ident "x"))))) ~=? (rebuildExp (TupleLet ["x", "y"] (Apply (Free "f") (Free "g")) (Apply (Bound 0) (Bound 1))))]
 
 testRebuildInt = [(LHE.Lit (LHE.Int 0)) ~=? (rebuildInt (Con "Z" [])),
                   (LHE.Lit (LHE.Int 1)) ~=? (rebuildInt (Con "S" [Con "Z" []])),
@@ -201,6 +235,9 @@ testRename = ["x''" ~=? (rename ["x", "x'"] "x"),
 
 tests = TestList (testEquality ++ 
                   testInequality ++
+                  testRebuildQualConDecl ++
+                  testRebuildBangType ++
+                  testRebuildDecl ++
                   testRebuildExp ++
                   testRebuildInt ++
                   testRebuildString ++
