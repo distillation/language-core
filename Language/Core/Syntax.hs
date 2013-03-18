@@ -323,11 +323,11 @@ free' xs (Free x)
 free' xs (Bound _) = xs
 free' xs (Lambda _ t) = free' xs t
 free' xs (Con _ ts) = foldr (flip free') xs ts
-free' xs (Apply t u) = free' (free' xs t) u
+free' xs (Apply t u) = free' (free' xs u) t
 free' xs (Fun _) = xs
 free' xs (Case t bs) = foldr (\(Branch _ _ t') xs' -> free' xs' t') (free' xs t) bs
 free' xs (Let _ t u) = free' (free' xs t) u
-free' xs (Where t ds) = foldr (\(_, t') xs' -> free' xs' t') (free' xs t) ds
+free' xs (Where t ds) = free' (foldr (\(_, t') xs' -> free' xs' t') xs ds) t
 free' xs (Tuple es) = foldr (\e xs' -> free' xs' e) xs es
 free' xs (TupleLet _ e e') = free' (free' xs e) e'
 
@@ -354,7 +354,7 @@ bound' d bs (Apply t u) = bound' d (bound' d bs u) t
 bound' _ bs (Fun _) = bs
 bound' d bs (Case t bs') = foldr (\(Branch _ xs t') bs'' -> bound' (d + length xs) bs'' t') (bound' d bs t) bs'
 bound' d bs (Let _ t u) = bound' (d + 1) (bound' d bs t) u
-bound' d bs (Where t ds) = foldr (\(_, t') bs' -> bound' d bs' t') (bound' d bs t) ds
+bound' d bs (Where t ds) = bound' d (foldr (\(_, t') bs' -> bound' d bs' t') bs ds) t
 bound' d bs (Tuple es) = foldr (\e bs' -> bound' d bs' e) bs es
 bound' d bs (TupleLet xs t u) = bound' (d + length xs) (bound' d bs t) u
 
@@ -377,10 +377,10 @@ funs' fs (Bound _) = fs
 funs' fs (Lambda _ t) = funs' fs t
 funs' fs (Con _ ts) = foldr (flip funs') fs ts
 funs' fs (Fun f) = f:fs
-funs' fs (Apply t u) = funs' (funs' fs t) u
+funs' fs (Apply t u) = funs' (funs' fs u) t
 funs' fs (Case t bs) = foldr (\(Branch _ _ t') fs' -> funs' fs' t') (funs' fs t) bs
 funs' fs (Let _ t u) = funs' (funs' fs t) u
-funs' fs (Where t ds) = foldr (\(_, t') fs' -> funs' fs' t') (funs' fs t) ds
+funs' fs (Where t ds) = funs' (foldr (\(_, t') fs' -> funs' fs' t') fs ds) t
 funs' fs (Tuple es) = foldr (\e fs' -> funs' fs' e) fs es
 funs' fs (TupleLet _ t u) = funs' (funs' fs t) u
 
@@ -388,8 +388,8 @@ funs' fs (TupleLet _ t u) = funs' (funs' fs t) u
     Shifts (increases) the binding level of supplied bound variable by a supplied depth within a supplied 'Term'.
 -}
 
-shift :: BoundVar -- ^ The bound variable to be shifted.
-      -> Int -- ^ The amount to shift the bound variable by.
+shift :: Int -- ^ The amount to shift the bound variable by.
+      -> BoundVar -- ^ The minimum bound depth to be shifted.
       -> Term -- ^ The 'Term' to shift the bound variable in.
       -> Term
 shift 0 _ u = u
