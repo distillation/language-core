@@ -212,6 +212,7 @@ parseDecl (LHE.FunBind [LHE.Match _ name pats _ rhs (LHE.BDecls decls)]) =
             0 -> foldr (\v e -> Lambda v (abstract 0 v e)) body args
             _ -> foldr (\v e -> Lambda v (abstract 0 v e)) (Where body locals) args
     in (functionName, body')
+-- TODO: parse functions with multiple definitions
 -- parseDecl (LHE.FunBind matches@((LHE.Match _ name _ _ _ _):_)) =
 --    let functionName = parseName name
 --        fMatches = map (\(LHE.Match _ _ pats _ rhs (LHE.BDecls decls)) -> (pats, parseRhs rhs, parseDecls decls))
@@ -307,7 +308,7 @@ parseExp (LHE.Con (LHE.Special s)) = Con (parseSpecialCon s) []
 parseExp (LHE.Con qn) = Con (parseQName qn) []
 parseExp (LHE.Lit lit) = parseLit lit
 parseExp (LHE.InfixApp e o e')
- | parseQOp o == "NilTransformer" = Con "NilTransformer" []
+ | parseQOp o == "NilTransformer" = Con "NilTransformer" [] -- TODO: is this correct?
  | parseQOp o == "ConsTransformer" = 
      let es = gatherInfixConsArgs e ++ [parseExp e']
      in buildCon es
@@ -318,7 +319,7 @@ parseExp (LHE.InfixApp e o e')
       | parseQOp p == "ConsTransformer" = gatherInfixConsArgs g ++ [parseExp g']
       | otherwise = [parseExp f]
      gatherInfixConsArgs f = [parseExp f]
-         
+     -- TODO: is the below correct? really?
      buildCon (f:f':[]) = Con "ConsTransformer" [f, f']
      buildCon (f:fs) = Con "ConsTransformer" [f, buildCon fs]
      buildCon [] = error "Attempting to parse empty set of cons elements to ConsTransformer"
