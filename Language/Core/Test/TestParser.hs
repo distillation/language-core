@@ -9,10 +9,57 @@ testParsePatToVar = ["var" ~=? (parsePatToVar (LHE.PVar (LHE.Ident "var"))),
                      "var" ~=? (parsePatToVar (LHE.PVar (LHE.Symbol "var"))),
                      "var" ~=? (parsePatToVar (LHE.PParen (LHE.PVar (LHE.Ident "var"))))]
 
+testParseRhs = [(Free "var") ~=? (parseRhs (LHE.UnGuardedRhs (makeVar "var"))),
+                (Case (Free "var") [Branch "True" [] (Free "var'")]) ~=? (parseRhs (LHE.GuardedRhss [makeGuardedRhs (makeVar "var") (makeVar "var'")])),
+                (Case (Free "var") [Branch "True" [] (Free "var'"), Branch "False" [] (Case (Free "var''") [Branch "True" [] (Free "var'''")])]) ~=? (parseRhs (LHE.GuardedRhss [makeGuardedRhs (makeVar "var") (makeVar "var'"), makeGuardedRhs (makeVar "var''") (makeVar "var'''")]))]
+
+testParseGuardedRhss = [(Case (Free "var") [Branch "True" [] (Free "var'")]) ~=? (parseGuardedRhss [makeGuardedRhs (makeVar "var") (makeVar "var'")]),
+                        (Case (Free "var") [Branch "True" [] (Free "var'"), Branch "False" [] (Case (Free "var''") [Branch "True" [] (Free "var'''")])]) ~=? (parseGuardedRhss [makeGuardedRhs (makeVar "var") (makeVar "var'"), makeGuardedRhs (makeVar "var''") (makeVar "var'''")])]
+
+makeGuardedRhs e e' = LHE.GuardedRhs (LHE.SrcLoc "" 0 0) [LHE.Qualifier e] e'
+
 testParseSpecialCon = ["NilTransformer" ~=? (parseSpecialCon (LHE.ListCon)),
                        "ConsTransformer" ~=? (parseSpecialCon (LHE.Cons))]
 
-testParseLit = [(Con "Z" []) ~=? (parseLit  (LHE.Int 0)),
+testParseExp = [(Free "var") ~=? (parseExp (makeVar "var")),
+                (Free "var") ~=? (parseExp (LHE.Var (LHE.UnQual (LHE.Symbol "var")))),
+                (Con "NilTransformer" []) ~=? (parseExp (LHE.Con (LHE.Special LHE.ListCon))),
+                (Con "ConsTransformer" []) ~=? (parseExp (LHE.Con (LHE.Special LHE.Cons))),
+                (Con "Z" []) ~=? (parseExp (LHE.Lit (LHE.Int 0))),
+                (Con "S" [Con "Z" []]) ~=? (parseExp (LHE.Lit (LHE.Int 1))),
+                (Con "S" [Con "S" [Con "Z" []]]) ~=? (parseExp (LHE.Lit (LHE.Int 2))),
+                (Con "Z" []) ~=? (parseExp (LHE.Lit (LHE.PrimInt 0))),
+                (Con "S" [Con "Z" []]) ~=? (parseExp (LHE.Lit (LHE.PrimInt 1))),
+                (Con "S" [Con "S" [Con "Z" []]]) ~=? (parseExp (LHE.Lit (LHE.PrimInt 2))),
+                (Con "StringTransformer" [(Con "a" [])]) ~=? (parseExp (LHE.Lit (LHE.String "a"))),
+                (Con "StringTransformer" [(Con "a" [Con "b" []])]) ~=? (parseExp (LHE.Lit (LHE.String "ab"))),
+                (Con "StringTransformer" [(Con "a" [Con "b" [Con "c" []]])]) ~=? (parseExp (LHE.Lit (LHE.String "abc"))),
+                (Con "StringTransformer" [(Con "a" [])]) ~=? (parseExp (LHE.Lit (LHE.PrimString "a"))),
+                (Con "StringTransformer" [(Con "a" [Con "b" []])]) ~=? (parseExp (LHE.Lit (LHE.PrimString "ab"))),
+                (Con "StringTransformer" [(Con "a" [Con "b" [Con "c" []]])]) ~=? (parseExp (LHE.Lit (LHE.PrimString "abc"))),
+                (Con "CharTransformer" [Con "a" []]) ~=? (parseExp (LHE.Lit (LHE.Char 'a'))),
+                (Con "CharTransformer" [Con "a" []]) ~=? (parseExp (LHE.Lit (LHE.PrimChar 'a'))),
+                (Con "NilTransformer" []) ~=? (parseExp (LHE.InfixApp (makeVar "var") (LHE.QVarOp (LHE.Special LHE.ListCon)) (makeVar "var"))),
+                (Con "ConsTransformer" [Free "var", Free "var'"]) ~=? (parseExp (LHE.InfixApp (makeVar "var") (LHE.QVarOp (LHE.Special LHE.Cons)) (makeVar "var'"))),
+                (Con "ConsTransformer" [Free "var", Con "ConsTransformer" [Free "var'", Free "var''"]]) ~=? (parseExp (LHE.InfixApp (LHE.InfixApp (makeVar "var") (LHE.QVarOp (LHE.Special LHE.Cons)) (makeVar "var'")) (LHE.QVarOp (LHE.Special LHE.Cons)) (makeVar "var''"))),
+                (Apply (Apply (Free "fun") (Free "var")) (Free "var'")) ~=? (parseExp (LHE.InfixApp (makeVar "var") (LHE.QVarOp (LHE.UnQual (LHE.Ident "fun"))) (makeVar "var'"))),
+                (Apply (Free "var") (Free "var'")) ~=? (parseExp (LHE.App (makeVar "var") (makeVar "var'"))),
+                (Apply (Apply (Free "var") (Free "var'")) (Free "var''")) ~=? (parseExp (LHE.App (LHE.App (makeVar "var") (makeVar "var'")) (makeVar "var''"))),
+                (Con "C" [Free "var"]) ~=? (parseExp (LHE.App (LHE.Con (LHE.UnQual (LHE.Ident "C"))) (makeVar "var"))),
+                (Con "C" [Free "var", Free "var'"]) ~=? (parseExp (LHE.App (LHE.App (LHE.Con (LHE.UnQual (LHE.Ident "C"))) (makeVar "var")) (makeVar "var'"))),
+                (Lambda "x" (Bound 0)) ~=? (parseExp (LHE.Lambda (LHE.SrcLoc "" 0 0) [LHE.PVar (LHE.Ident "x")] (makeVar "x"))),
+                (Lambda "x" (Lambda "y" (Apply (Bound 0) (Bound 1)))) ~=? (parseExp (LHE.Lambda (LHE.SrcLoc "" 0 0) [LHE.PVar (LHE.Ident "x"), LHE.PVar (LHE.Ident "y")] (LHE.App (makeVar "y") (makeVar "x")))),
+                (Lambda "x" (Lambda "y" (Apply (Bound 1) (Bound 0)))) ~=? (parseExp (LHE.Lambda (LHE.SrcLoc "" 0 0) [LHE.PVar (LHE.Ident "x"), LHE.PVar (LHE.Ident "y")] (LHE.App (makeVar "x") (makeVar "y")))),
+                (Con "NilTransformer" []) ~=? (parseExp (LHE.List [])),
+                (Con "ConsTransformer" [(Free "var"), Con "NilTransformer" []]) ~=? (parseExp (LHE.List [makeVar "var"])),
+                (Con "ConsTransformer" [(Free "var"), Con "ConsTransformer" [(Free "var'"), Con "NilTransformer" []]]) ~=? (parseExp (LHE.List [makeVar "var", makeVar "var'"])),
+                (Free "var") ~=? (parseExp (LHE.Paren (makeVar "var"))),
+                (Case (Free "var") [Branch "True" [] (Free "var'"), Branch "False" [] (Free "var''")]) ~=? (parseExp (LHE.If (makeVar "var") (makeVar "var'") (makeVar "var''"))),
+                (Case (Free "var") [Branch "Con" [] (Free "var"), Branch "Con" ["x", "xs"] (Free "var")]) ~=? (parseExp (LHE.Case (makeVar "var") [makeAlt (LHE.PApp (LHE.UnQual (LHE.Ident "Con")) []) (makeVar "var"), makeAlt (LHE.PApp (LHE.UnQual (LHE.Ident "Con")) [LHE.PVar (LHE.Ident "x"), LHE.PVar (LHE.Ident "xs")]) (makeVar "var")])),
+                (Tuple [Free "var", Free "var'", Free "var''"]) ~=? (parseExp (LHE.Tuple [makeVar "var", makeVar "var'", makeVar "var''"]))]
+                -- TODO: testing for let statements
+
+testParseLit = [(Con "Z" []) ~=? (parseLit (LHE.Int 0)),
                 (Con "S" [Con "Z" []]) ~=? (parseLit (LHE.Int 1)),
                 (Con "S" [Con "S" [Con "Z" []]]) ~=? (parseLit (LHE.Int 2)),
                 (Con "Z" []) ~=? (parseLit (LHE.PrimInt 0)),
@@ -41,6 +88,32 @@ testParseQOp = ["abc" ~=? (parseQOp (LHE.QVarOp (LHE.UnQual (LHE.Ident "abc"))))
                 "ConsTransformer" ~=? (parseQOp (LHE.QVarOp (LHE.Special LHE.Cons))),
                 "NilTransformer" ~=? (parseQOp (LHE.QConOp (LHE.Special LHE.ListCon))),
                 "ConsTransformer" ~=? (parseQOp (LHE.QConOp (LHE.Special LHE.Cons)))]
+
+testParseList = [(Con "NilTransformer" []) ~=? (parseList []),
+                 (Con "ConsTransformer" [(Free "var"), Con "NilTransformer" []]) ~=? (parseList [makeVar "var"]),
+                 (Con "ConsTransformer" [(Free "var"), Con "ConsTransformer" [(Free "var'"), Con "NilTransformer" []]]) ~=? (parseList [makeVar "var", makeVar "var'"])]
+
+testParseAlt = [(Branch "Con" [] (Free "var")) ~=? (parseAlt (makeAlt (LHE.PApp (LHE.UnQual (LHE.Ident "Con")) []) (makeVar "var"))),
+                (Branch "Con" ["x", "xs"] (Free "var")) ~=? (parseAlt (makeAlt (LHE.PApp (LHE.UnQual (LHE.Ident "Con")) [LHE.PVar (LHE.Ident "x"), LHE.PVar (LHE.Ident "xs")]) (makeVar "var"))),
+                (Branch "NilTransformer" [] (Free "var")) ~=? (parseAlt (makeAlt (LHE.PList []) (makeVar "var"))),
+                (Branch "ConsTransformer") ["x", "xs"] (Apply (Bound 1) (Bound 0)) ~=? (parseAlt (makeAlt (LHE.PInfixApp (LHE.PVar (LHE.Ident "x")) (LHE.Special LHE.Cons) (LHE.PVar (LHE.Ident "xs"))) (LHE.App (makeVar "x") (makeVar "xs")))),
+                (Branch "ConsTransformer") ["x"] (Bound 0) ~=? (parseAlt (makeAlt (LHE.PInfixApp (LHE.PVar (LHE.Ident "x")) (LHE.Special LHE.Cons) (LHE.PList [])) (makeVar "x"))),
+                (Branch "Con" [] (Free "var")) ~=? (parseAlt (makeAlt (LHE.PParen (LHE.PApp (LHE.UnQual (LHE.Ident "Con")) [])) (makeVar "var")))]
+
+makeAlt p a = LHE.Alt (LHE.SrcLoc "" 0 0) p (LHE.UnGuardedAlt a) (LHE.BDecls [])
+
+testParseGuardedAlts = [(Free "var") ~=? (parseGuardedAlts (LHE.UnGuardedAlt (makeVar "var"))),
+                        (Case (Free "var") [Branch "True" [] (Free "var'")]) ~=? (parseGuardedAlts (LHE.GuardedAlts [makeGuardedAlt (makeVar "var") (makeVar "var'")])),
+                        (Case (Free "var") [Branch "True" [] (Free "var'"), Branch "False" [] (Case (Free "var") [Branch "True" [] (Free "var'")])]) ~=? (parseGuardedAlts (LHE.GuardedAlts [makeGuardedAlt (makeVar "var") (makeVar "var'"), makeGuardedAlt (makeVar "var") (makeVar "var'")])),
+                        (Case (Free "var") [Branch "True" [] (Free "var'"), Branch "False" [] (Case (Free "var") [Branch "True" [] (Free "var'"), Branch "False" [] (Case (Free "var") [Branch "True" [] (Free "var'")])])]) ~=? (parseGuardedAlts (LHE.GuardedAlts [makeGuardedAlt (makeVar "var") (makeVar "var'"), makeGuardedAlt (makeVar "var") (makeVar "var'"), makeGuardedAlt (makeVar "var") (makeVar "var'")]))]
+
+testParseGuardedAlts' = [(Case (Free "var") [Branch "True" [] (Free "var'")]) ~=? (parseGuardedAlts' [makeGuardedAlt (makeVar "var") (makeVar "var'")]),
+                        (Case (Free "var") [Branch "True" [] (Free "var'"), Branch "False" [] (Case (Free "var") [Branch "True" [] (Free "var'")])]) ~=? (parseGuardedAlts' [makeGuardedAlt (makeVar "var") (makeVar "var'"), makeGuardedAlt (makeVar "var") (makeVar "var'")]),
+                        (Case (Free "var") [Branch "True" [] (Free "var'"), Branch "False" [] (Case (Free "var") [Branch "True" [] (Free "var'"), Branch "False" [] (Case (Free "var") [Branch "True" [] (Free "var'")])])]) ~=? (parseGuardedAlts' [makeGuardedAlt (makeVar "var") (makeVar "var'"), makeGuardedAlt (makeVar "var") (makeVar "var'"), makeGuardedAlt (makeVar "var") (makeVar "var'")])]
+
+makeVar v = LHE.Var (LHE.UnQual (LHE.Ident v))
+
+makeGuardedAlt e e' = LHE.GuardedAlt (LHE.SrcLoc "" 0 0) [LHE.Qualifier e] e'
 
 testParseQName = ["abc" ~=? (parseQName (LHE.UnQual (LHE.Ident "abc"))),
                   "abc" ~=? (parseQName (LHE.UnQual (LHE.Symbol "abc"))),
@@ -84,10 +157,17 @@ testFixFunctions = [(Free "v") ~=? (fixFunctions (Free "v") []),
 
 tests = TestList (testParsePatToVar ++
                   testParseSpecialCon ++
+                  testParseRhs ++
+                  testParseGuardedRhss ++
+                  testParseExp ++
                   testParseLit ++
                   testParseInt ++
                   testParseLitString ++
                   testParseQOp ++
+                  testParseList ++
+                  testParseAlt ++
+                  testParseGuardedAlts ++
+                  testParseGuardedAlts' ++
                   testParseQName ++
                   testParseName ++
                   testFixFunctions)
