@@ -96,6 +96,9 @@ instance Show Program where
     
 instance Show Term where
     show t = LHE.prettyPrint (rebuildExp t)
+    
+instance Show Branch where 
+    show b = LHE.prettyPrint (rebuildAlt b)
 
 {-|
     Rebuilds a 'Program' into an 'LHE.Module' to enable pretty printing.
