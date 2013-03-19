@@ -212,6 +212,7 @@ parseDecl (LHE.FunBind [LHE.Match _ name pats _ rhs (LHE.BDecls decls)]) =
             0 -> foldr (\v e -> Lambda v (abstract 0 v e)) body args
             _ -> foldr (\v e -> Lambda v (abstract 0 v e)) (Where body locals) args
     in (functionName, body')
+-- TODO: parse functions with multiple definitions
 -- parseDecl (LHE.FunBind matches@((LHE.Match _ name _ _ _ _):_)) =
 --    let functionName = parseName name
 --        fMatches = map (\(LHE.Match _ _ pats _ rhs (LHE.BDecls decls)) -> (pats, parseRhs rhs, parseDecls decls))
