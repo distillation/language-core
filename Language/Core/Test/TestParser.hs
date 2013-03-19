@@ -5,6 +5,10 @@ import Language.Core.Parser
 import Test.HUnit
 import qualified Language.Haskell.Exts as LHE
 
+testParsePatToVar = ["var" ~=? (parsePatToVar (LHE.PVar (LHE.Ident "var"))),
+                     "var" ~=? (parsePatToVar (LHE.PVar (LHE.Symbol "var"))),
+                     "var" ~=? (parsePatToVar (LHE.PParen (LHE.PVar (LHE.Ident "var"))))]
+
 testParseSpecialCon = ["NilTransformer" ~=? (parseSpecialCon (LHE.ListCon)),
                        "ConsTransformer" ~=? (parseSpecialCon (LHE.Cons))]
 
@@ -23,13 +27,20 @@ testParseLit = [(Con "Z" []) ~=? (parseLit  (LHE.Int 0)),
                 (Con "CharTransformer" [Con "a" []]) ~=? (parseLit (LHE.Char 'a')),
                 (Con "CharTransformer" [Con "a" []]) ~=? (parseLit (LHE.PrimChar 'a'))]
 
-testParseLitString = [(Con "a" []) ~=? (parseLitString "a"),
-                      (Con "a" [Con "b" []]) ~=? (parseLitString "ab"),
-                      (Con "a" [Con "b" [Con "c" []]]) ~=? (parseLitString "abc")]
-                      
 testParseInt = [(Con "Z" []) ~=? (parseInt 0),
                 (Con "S" [Con "Z" []]) ~=? (parseInt 1),
                 (Con "S" [Con "S" [Con "Z" []]]) ~=? (parseInt 2)]
+
+testParseLitString = [(Con "a" []) ~=? (parseLitString "a"),
+                      (Con "a" [Con "b" []]) ~=? (parseLitString "ab"),
+                      (Con "a" [Con "b" [Con "c" []]]) ~=? (parseLitString "abc")]
+
+testParseQOp = ["abc" ~=? (parseQOp (LHE.QVarOp (LHE.UnQual (LHE.Ident "abc")))),
+                "abc" ~=? (parseQOp (LHE.QVarOp (LHE.UnQual (LHE.Symbol "abc")))),
+                "NilTransformer" ~=? (parseQOp (LHE.QVarOp (LHE.Special LHE.ListCon))),
+                "ConsTransformer" ~=? (parseQOp (LHE.QVarOp (LHE.Special LHE.Cons))),
+                "NilTransformer" ~=? (parseQOp (LHE.QConOp (LHE.Special LHE.ListCon))),
+                "ConsTransformer" ~=? (parseQOp (LHE.QConOp (LHE.Special LHE.Cons)))]
 
 testParseQName = ["abc" ~=? (parseQName (LHE.UnQual (LHE.Ident "abc"))),
                   "abc" ~=? (parseQName (LHE.UnQual (LHE.Symbol "abc"))),
@@ -71,10 +82,12 @@ testFixFunctions = [(Free "v") ~=? (fixFunctions (Free "v") []),
                     (Where (Fun "x") [("a", Fun "y")]) ~=? (fixFunctions (Where (Free "x") [("a", Free "y")]) ["x", "y"]),
                     (Where (Apply (Fun "a") (Fun "x")) [("a", Fun "y")]) ~=? (fixFunctions (Where (Apply (Free "a") (Free "x")) [("a", Free "y")]) ["x", "y"])]
 
-tests = TestList (testParseSpecialCon ++
+tests = TestList (testParsePatToVar ++
+                  testParseSpecialCon ++
                   testParseLit ++
-                  testParseLitString ++
                   testParseInt ++
+                  testParseLitString ++
+                  testParseQOp ++
                   testParseQName ++
                   testParseName ++
                   testFixFunctions)
