@@ -233,21 +233,21 @@ testRename = ["x''" ~=? (rename ["x", "x'"] "x"),
               "x" ~=? (rename [] "x"),
               "x'" ~=? (rename ["x","x''"] "x")]
 
-tests = TestList (testEquality ++ 
-                  testInequality ++
-                  testRebuildQualConDecl ++
-                  testRebuildBangType ++
-                  testRebuildDecl ++
-                  testRebuildExp ++
-                  testRebuildInt ++
-                  testRebuildString ++
-                  testRebuildAlt ++
-                  testRebuildCon ++
-                  testMatch ++
-                  testFree ++
-                  testBound ++
-                  testFuns ++
-                  testShift ++ 
-                  testSubst ++
-                  testAbstract ++ 
-                  testRename)
+tests = (testEquality ++ 
+         testInequality ++
+         testRebuildQualConDecl ++
+         testRebuildBangType ++
+         testRebuildDecl ++
+         testRebuildExp ++
+         testRebuildInt ++
+         testRebuildString ++
+         testRebuildAlt ++
+         testRebuildCon ++
+         testMatch ++
+         testFree ++
+         testBound ++
+         testFuns ++
+         testShift ++ 
+         testSubst ++
+         testAbstract ++ 
+         testRename)
