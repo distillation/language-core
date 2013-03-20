@@ -41,7 +41,7 @@ type DataCon = (String, [DataType])
     Represents data type definitions in our language model.
 -}
 
-data DataType = DataType String [String] [DataCon] LHE.DataOrNew (Maybe LHE.Context) [LHE.Deriving] deriving Show
+data DataType = DataType String [String] [DataCon] LHE.DataOrNew (Maybe LHE.Context) [LHE.Deriving] deriving (Show, Eq)
 
 {-|
     Represents expressions in our language model.

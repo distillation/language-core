@@ -5,6 +5,71 @@ import Language.Core.Parser
 import Test.HUnit
 import qualified Language.Haskell.Exts as LHE
 
+testParseDataCon = [(makeDataType' "List" ["a"] [("Nil", []), ("Cons", [makeDataType "a" [], makeDataType "List" ["a"]])]) ~=? (parseDataCon (makeDataDecl "List" ["a"] [LHE.ConDecl (LHE.Ident "Nil") [], LHE.ConDecl (LHE.Ident "Cons") [(LHE.BangedTy (LHE.TyVar (LHE.Ident "a"))), (LHE.BangedTy (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "List"))) (LHE.TyVar (LHE.Ident "a"))))]])),
+                    (makeDataType' "Tree" ["a", "b"] [("Leaf", [makeDataType "a" []]), ("Leaf'", [makeDataType "b" []]), ("Node", [makeDataType "Tree" ["a", "b"], makeDataType "Tree" ["a", "b"]])]) ~=? (parseDataCon (makeDataDecl "Tree" ["a", "b"] [LHE.ConDecl (LHE.Ident "Leaf") [LHE.BangedTy (LHE.TyVar (LHE.Ident "a"))], LHE.ConDecl (LHE.Ident "Leaf'") [LHE.BangedTy (LHE.TyVar (LHE.Ident "b"))], LHE.ConDecl (LHE.Ident "Node") [(LHE.BangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Tree"))) (LHE.TyVar (LHE.Ident "a"))) (LHE.TyVar (LHE.Ident "b")))), (LHE.BangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Tree"))) (LHE.TyVar (LHE.Ident "a"))) (LHE.TyVar (LHE.Ident "b"))))]]))]
+
+makeDataType' n tyv dcs = DataType n tyv dcs LHE.DataType (Just []) []
+
+makeDataDecl n tyv cdls = LHE.DataDecl (LHE.SrcLoc "" 0 0) LHE.DataType [] (LHE.Ident n) (map (LHE.UnkindedVar . LHE.Ident) tyv) (map makeQualConDecl cdls) []
+
+testParseQualConDecl = [("Con", [makeDataType "Expr" []]) ~=? (parseQualConDecl (makeQualConDecl (LHE.ConDecl (LHE.Ident "Con") [(LHE.BangedTy (LHE.TyVar (LHE.Ident "Expr")))]))),
+                        ("Con", [makeDataType "Expr" ["a"]]) ~=? (parseQualConDecl (makeQualConDecl (LHE.ConDecl (LHE.Ident "Con") [(LHE.BangedTy (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Expr"))) (LHE.TyVar (LHE.Ident "a"))))]))),
+                        ("Con", [makeDataType "Expr" ["a", "b"]]) ~=? (parseQualConDecl (makeQualConDecl (LHE.ConDecl (LHE.Ident "Con") [(LHE.BangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Expr"))) (LHE.TyVar (LHE.Ident "a"))) (LHE.TyVar (LHE.Ident "b"))))]))),
+                        ("Con", [makeDataType "Expr" []]) ~=? (parseQualConDecl (makeQualConDecl (LHE.ConDecl (LHE.Ident "Con") [(LHE.BangedTy (LHE.TyParen (LHE.TyVar (LHE.Ident "Expr"))))]))),
+                        ("Con", [makeDataType "Expr" []]) ~=? (parseQualConDecl (makeQualConDecl (LHE.ConDecl (LHE.Ident "Con") [(LHE.UnBangedTy (LHE.TyVar (LHE.Ident "Expr")))]))),
+                        ("Con", [makeDataType "Expr" ["a"]]) ~=? (parseQualConDecl (makeQualConDecl (LHE.ConDecl (LHE.Ident "Con") [(LHE.UnBangedTy (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Expr"))) (LHE.TyVar (LHE.Ident "a"))))]))),
+                        ("Con", [makeDataType "Expr" ["a", "b"]]) ~=? (parseQualConDecl (makeQualConDecl (LHE.ConDecl (LHE.Ident "Con") [(LHE.UnBangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Expr"))) (LHE.TyVar (LHE.Ident "a"))) (LHE.TyVar (LHE.Ident "b"))))]))),
+                        ("Con", [makeDataType "Expr" []]) ~=? (parseQualConDecl (makeQualConDecl (LHE.ConDecl (LHE.Ident "Con") [(LHE.UnBangedTy (LHE.TyParen (LHE.TyVar (LHE.Ident "Expr"))))])))]
+
+makeQualConDecl c = LHE.QualConDecl (LHE.SrcLoc "" 0 0) [] [] c
+
+testParseTyVarBind = ["a" ~=? (parseTyVarBind (LHE.UnkindedVar (LHE.Ident "a"))),
+                      "abc" ~=? (parseTyVarBind (LHE.UnkindedVar (LHE.Ident "abc")))]
+
+testParseConDecl = [("Con", [makeDataType "Expr" []]) ~=? (parseConDecl (LHE.ConDecl (LHE.Ident "Con") [(LHE.BangedTy (LHE.TyVar (LHE.Ident "Expr")))])),
+                    ("Con", [makeDataType "Expr" ["a"]]) ~=? (parseConDecl (LHE.ConDecl (LHE.Ident "Con") [(LHE.BangedTy (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Expr"))) (LHE.TyVar (LHE.Ident "a"))))])),
+                    ("Con", [makeDataType "Expr" ["a", "b"]]) ~=? (parseConDecl (LHE.ConDecl (LHE.Ident "Con") [(LHE.BangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Expr"))) (LHE.TyVar (LHE.Ident "a"))) (LHE.TyVar (LHE.Ident "b"))))])),
+                    ("Con", [makeDataType "Expr" []]) ~=? (parseConDecl (LHE.ConDecl (LHE.Ident "Con") [(LHE.BangedTy (LHE.TyParen (LHE.TyVar (LHE.Ident "Expr"))))])),
+                    ("Con", [makeDataType "Expr" []]) ~=? (parseConDecl (LHE.ConDecl (LHE.Ident "Con") [(LHE.UnBangedTy (LHE.TyVar (LHE.Ident "Expr")))])),
+                    ("Con", [makeDataType "Expr" ["a"]]) ~=? (parseConDecl (LHE.ConDecl (LHE.Ident "Con") [(LHE.UnBangedTy (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Expr"))) (LHE.TyVar (LHE.Ident "a"))))])),
+                    ("Con", [makeDataType "Expr" ["a", "b"]]) ~=? (parseConDecl (LHE.ConDecl (LHE.Ident "Con") [(LHE.UnBangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Expr"))) (LHE.TyVar (LHE.Ident "a"))) (LHE.TyVar (LHE.Ident "b"))))])),
+                    ("Con", [makeDataType "Expr" []]) ~=? (parseConDecl (LHE.ConDecl (LHE.Ident "Con") [(LHE.UnBangedTy (LHE.TyParen (LHE.TyVar (LHE.Ident "Expr"))))]))]
+
+testParseBangType = [(makeDataType "Expr" []) ~=? (parseBangType (LHE.BangedTy (LHE.TyVar (LHE.Ident "Expr")))),
+                     (makeDataType "Expr" ["a"]) ~=? (parseBangType (LHE.BangedTy (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Expr"))) (LHE.TyVar (LHE.Ident "a"))))),
+                     (makeDataType "Expr" ["a", "b"]) ~=? (parseBangType (LHE.BangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Expr"))) (LHE.TyVar (LHE.Ident "a"))) (LHE.TyVar (LHE.Ident "b"))))),
+                     (makeDataType "Expr" []) ~=? (parseBangType (LHE.BangedTy (LHE.TyParen (LHE.TyVar (LHE.Ident "Expr"))))),
+                     (makeDataType "Expr" []) ~=? (parseBangType (LHE.UnBangedTy (LHE.TyVar (LHE.Ident "Expr")))),
+                     (makeDataType "Expr" ["a"]) ~=? (parseBangType (LHE.UnBangedTy (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Expr"))) (LHE.TyVar (LHE.Ident "a"))))),
+                     (makeDataType "Expr" ["a", "b"]) ~=? (parseBangType (LHE.UnBangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Expr"))) (LHE.TyVar (LHE.Ident "a"))) (LHE.TyVar (LHE.Ident "b"))))),
+                     (makeDataType "Expr" []) ~=? (parseBangType (LHE.UnBangedTy (LHE.TyParen (LHE.TyVar (LHE.Ident "Expr")))))]
+
+testParseType = [(makeDataType "Expr" []) ~=? (parseType (LHE.TyVar (LHE.Ident "Expr"))),
+                 (makeDataType "Expr" ["a"]) ~=? (parseType (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Expr"))) (LHE.TyVar (LHE.Ident "a")))),
+                 (makeDataType "Expr" ["a", "b"]) ~=? (parseType (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Expr"))) (LHE.TyVar (LHE.Ident "a"))) (LHE.TyVar (LHE.Ident "b")))),
+                 (makeDataType "Expr" []) ~=? (parseType (LHE.TyParen (LHE.TyVar (LHE.Ident "Expr"))))]
+
+makeDataType n v = DataType n v [] LHE.DataType Nothing []
+
+testHsDeclIsFunc = [True ~=? (hsDeclIsFunc (LHE.PatBind (LHE.SrcLoc "" 0 0) (LHE.PVar (LHE.Ident "f")) Nothing (LHE.UnGuardedRhs (makeVar "v")) (LHE.BDecls []))),
+                    True ~=? (hsDeclIsFunc (LHE.FunBind [LHE.Match (LHE.SrcLoc "" 0 0) (LHE.Ident "f") [] Nothing (LHE.UnGuardedRhs (makeVar "v")) (LHE.BDecls [])])),
+                    False ~=? (hsDeclIsFunc (makeDataDecl "List" ["a"] [LHE.ConDecl (LHE.Ident "Nil") [], LHE.ConDecl (LHE.Ident "Cons") [(LHE.BangedTy (LHE.TyVar (LHE.Ident "a"))), (LHE.BangedTy (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "List"))) (LHE.TyVar (LHE.Ident "a"))))]])),
+                    False ~=? (hsDeclIsFunc (makeDataDecl "Tree" ["a", "b"] [LHE.ConDecl (LHE.Ident "Leaf") [LHE.BangedTy (LHE.TyVar (LHE.Ident "a"))], LHE.ConDecl (LHE.Ident "Leaf'") [LHE.BangedTy (LHE.TyVar (LHE.Ident "b"))], LHE.ConDecl (LHE.Ident "Node") [(LHE.BangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Tree"))) (LHE.TyVar (LHE.Ident "a"))) (LHE.TyVar (LHE.Ident "b")))), (LHE.BangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Tree"))) (LHE.TyVar (LHE.Ident "a"))) (LHE.TyVar (LHE.Ident "b"))))]]))]
+
+testHsDeclIsDataCon = [True ~=? (hsDeclIsDataCon (makeDataDecl "List" ["a"] [LHE.ConDecl (LHE.Ident "Nil") [], LHE.ConDecl (LHE.Ident "Cons") [(LHE.BangedTy (LHE.TyVar (LHE.Ident "a"))), (LHE.BangedTy (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "List"))) (LHE.TyVar (LHE.Ident "a"))))]])),
+                       True ~=? (hsDeclIsDataCon (makeDataDecl "Tree" ["a", "b"] [LHE.ConDecl (LHE.Ident "Leaf") [LHE.BangedTy (LHE.TyVar (LHE.Ident "a"))], LHE.ConDecl (LHE.Ident "Leaf'") [LHE.BangedTy (LHE.TyVar (LHE.Ident "b"))], LHE.ConDecl (LHE.Ident "Node") [(LHE.BangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Tree"))) (LHE.TyVar (LHE.Ident "a"))) (LHE.TyVar (LHE.Ident "b")))), (LHE.BangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Tree"))) (LHE.TyVar (LHE.Ident "a"))) (LHE.TyVar (LHE.Ident "b"))))]])),
+                       False ~=? (hsDeclIsDataCon (LHE.PatBind (LHE.SrcLoc "" 0 0) (LHE.PVar (LHE.Ident "f")) Nothing (LHE.UnGuardedRhs (makeVar "v")) (LHE.BDecls []))),
+                       False ~=? (hsDeclIsDataCon (LHE.FunBind [LHE.Match (LHE.SrcLoc "" 0 0) (LHE.Ident "f") [] Nothing (LHE.UnGuardedRhs (makeVar "v")) (LHE.BDecls [])]))]
+
+testParseDecl = [("f", Free "v") ~=? (parseDecl (LHE.FunBind [LHE.Match (LHE.SrcLoc "" 0 0) (LHE.Ident "f") [] Nothing (LHE.UnGuardedRhs (makeVar "v")) (LHE.BDecls [])])),
+                 ("f", (Lambda "x" (Lambda "v" (Bound 0)))) ~=? (parseDecl (LHE.FunBind [LHE.Match (LHE.SrcLoc "" 0 0) (LHE.Ident "f") [LHE.PVar (LHE.Ident "x"), LHE.PVar (LHE.Ident "v")] Nothing (LHE.UnGuardedRhs (makeVar "v")) (LHE.BDecls [])])),
+                 ("f", (Lambda "v" (Lambda "x" (Bound 1)))) ~=? (parseDecl (LHE.FunBind [LHE.Match (LHE.SrcLoc "" 0 0) (LHE.Ident "f") [LHE.PVar (LHE.Ident "v"), LHE.PVar (LHE.Ident "x")] Nothing (LHE.UnGuardedRhs (makeVar "v")) (LHE.BDecls [])])),
+                 ("f", Where (Free "v") [("g", Free "w")]) ~=? (parseDecl (LHE.FunBind [LHE.Match (LHE.SrcLoc "" 0 0) (LHE.Ident "f") [] Nothing (LHE.UnGuardedRhs (makeVar "v")) (LHE.BDecls [LHE.FunBind [LHE.Match (LHE.SrcLoc "" 0 0) (LHE.Ident "g") [] Nothing (LHE.UnGuardedRhs (makeVar "w")) (LHE.BDecls [])]])])),
+                 ("f", (Lambda "x" (Lambda "v" (Where (Bound 0) [("g", Free "w")])))) ~=? (parseDecl (LHE.FunBind [LHE.Match (LHE.SrcLoc "" 0 0) (LHE.Ident "f") [LHE.PVar (LHE.Ident "x"), LHE.PVar (LHE.Ident "v")] Nothing (LHE.UnGuardedRhs (makeVar "v")) (LHE.BDecls [LHE.FunBind [LHE.Match (LHE.SrcLoc "" 0 0) (LHE.Ident "g") [] Nothing (LHE.UnGuardedRhs (makeVar "w")) (LHE.BDecls [])]])])),
+                 ("f", (Lambda "v" (Lambda "x" (Where (Bound 1) [("g", Free "w")])))) ~=? (parseDecl (LHE.FunBind [LHE.Match (LHE.SrcLoc "" 0 0) (LHE.Ident "f") [LHE.PVar (LHE.Ident "v"), LHE.PVar (LHE.Ident "x")] Nothing (LHE.UnGuardedRhs (makeVar "v")) (LHE.BDecls [LHE.FunBind [LHE.Match (LHE.SrcLoc "" 0 0) (LHE.Ident "g") [] Nothing (LHE.UnGuardedRhs (makeVar "w")) (LHE.BDecls [])]])])),
+                 ("f", Free "v") ~=? (parseDecl (LHE.PatBind (LHE.SrcLoc "" 0 0) (LHE.PVar (LHE.Ident "f")) Nothing (LHE.UnGuardedRhs (makeVar "v")) (LHE.BDecls []))),
+                 ("f", Where (Free "v") [("g", Free "w")]) ~=? (parseDecl (LHE.PatBind (LHE.SrcLoc "" 0 0) (LHE.PVar (LHE.Ident "f")) Nothing (LHE.UnGuardedRhs (makeVar "v")) (LHE.BDecls [LHE.FunBind [LHE.Match (LHE.SrcLoc "" 0 0) (LHE.Ident "g") [] Nothing (LHE.UnGuardedRhs (makeVar "w")) (LHE.BDecls [])]])))]
+
 testParsePatToVar = ["var" ~=? (parsePatToVar (LHE.PVar (LHE.Ident "var"))),
                      "var" ~=? (parsePatToVar (LHE.PVar (LHE.Symbol "var"))),
                      "var" ~=? (parsePatToVar (LHE.PParen (LHE.PVar (LHE.Ident "var"))))]
@@ -155,19 +220,28 @@ testFixFunctions = [(Free "v") ~=? (fixFunctions (Free "v") []),
                     (Where (Fun "x") [("a", Fun "y")]) ~=? (fixFunctions (Where (Free "x") [("a", Free "y")]) ["x", "y"]),
                     (Where (Apply (Fun "a") (Fun "x")) [("a", Fun "y")]) ~=? (fixFunctions (Where (Apply (Free "a") (Free "x")) [("a", Free "y")]) ["x", "y"])]
 
-tests = TestList (testParsePatToVar ++
-                  testParseSpecialCon ++
-                  testParseRhs ++
-                  testParseGuardedRhss ++
-                  testParseExp ++
-                  testParseLit ++
-                  testParseInt ++
-                  testParseLitString ++
-                  testParseQOp ++
-                  testParseList ++
-                  testParseAlt ++
-                  testParseGuardedAlts ++
-                  testParseGuardedAlts' ++
-                  testParseQName ++
-                  testParseName ++
-                  testFixFunctions)
+tests = (testParseDataCon ++
+         testParseQualConDecl ++
+         testParseTyVarBind ++
+         testParseConDecl ++
+         testParseBangType ++
+         testParseType ++
+         testHsDeclIsFunc ++
+         testHsDeclIsDataCon ++
+         testParseDecl ++
+         testParsePatToVar ++
+         testParseSpecialCon ++
+         testParseRhs ++
+         testParseGuardedRhss ++
+         testParseExp ++
+         testParseLit ++
+         testParseInt ++
+         testParseLitString ++
+         testParseQOp ++
+         testParseList ++
+         testParseAlt ++
+         testParseGuardedAlts ++
+         testParseGuardedAlts' ++
+         testParseQName ++
+         testParseName ++
+         testFixFunctions)
