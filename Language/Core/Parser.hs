@@ -87,7 +87,7 @@ parseCons ds = map parseDataCon (filter hsDeclIsDataCon ds)
 -}
 
 parseDataCon :: LHE.Decl -> DataType
-parseDataCon (LHE.DataDecl _ don con name vars cons derive) = DataType (parseName name) (map parseTyVarBind vars) (map parseQualConDecl cons) don (Just con) derive
+parseDataCon (LHE.DataDecl _ _ con name vars cons derive) = DataType (parseName name) (map parseTyVarBind vars) (map parseQualConDecl cons) (Just con) derive
 parseDataCon d = error ("Attempting to parse non data decl as data type: " ++ show d)
 
 {-| 
@@ -153,9 +153,9 @@ parseBangType (LHE.UnpackedTy t) = error ("Types with the UNPACK directive are n
 -}
 
 parseType :: LHE.Type -> DataType
-parseType (LHE.TyVar v) = DataType (parseName v) [] [] LHE.DataType Nothing []
-parseType (LHE.TyApp (LHE.TyCon v) (LHE.TyVar v')) = DataType (parseQName v) [parseName v'] [] LHE.DataType Nothing []
-parseType (LHE.TyApp (LHE.TyApp (LHE.TyCon v) (LHE.TyVar v')) (LHE.TyVar v'')) = DataType (parseQName v) [parseName v', parseName v''] [] LHE.DataType Nothing []
+parseType (LHE.TyVar v) = DataType (parseName v) [] [] Nothing []
+parseType (LHE.TyApp (LHE.TyCon v) (LHE.TyVar v')) = DataType (parseQName v) [parseName v'] [] Nothing []
+parseType (LHE.TyApp (LHE.TyApp (LHE.TyCon v) (LHE.TyVar v')) (LHE.TyVar v'')) = DataType (parseQName v) [parseName v', parseName v''] [] Nothing []
 parseType (LHE.TyParen t) = parseType t
 parseType t = error ("Attempting to parse disallowed type: " ++ show t)  
 

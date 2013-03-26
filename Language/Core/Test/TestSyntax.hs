@@ -38,7 +38,7 @@ testRebuildBangType = [(LHE.UnBangedTy (LHE.TyVar (LHE.Ident "name"))) ~=? (rebu
                        (LHE.UnBangedTy (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "name"))) (LHE.TyVar (LHE.Ident "var")))) ~=? (rebuildBangType (makeBangDataType "name" ["var"])),
                        (LHE.UnBangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "name"))) (LHE.TyVar (LHE.Ident "var"))) (LHE.TyVar (LHE.Ident "var'")))) ~=? (rebuildBangType (makeBangDataType "name" ["var", "var'"]))]
 
-makeBangDataType name vars = DataType name vars [] LHE.DataType Nothing []
+makeBangDataType name vars = DataType name vars [] Nothing []
 
 testRebuildDecl = [(makeDecl "f" (LHE.Var (LHE.UnQual (LHE.Ident "v")))) ~=? (rebuildDecl ("f", Free "v")),
                    (makeDecl "f'" (LHE.Case (LHE.Var (LHE.UnQual (LHE.Ident "x"))) [(makeAlt (LHE.PList []) (LHE.Var (LHE.UnQual (LHE.Ident "v")))), (makeAlt (LHE.PParen (LHE.PInfixApp (LHE.PVar (LHE.Ident "x")) (LHE.Special LHE.Cons) (LHE.PList []))) (LHE.Var (LHE.UnQual (LHE.Ident "x"))))])) ~=? (rebuildDecl ("f'", (Case (Free "x") [Branch "NilTransformer" [] (Free "v"), Branch "ConsTransformer" ["x"] (Bound 0)])))]
