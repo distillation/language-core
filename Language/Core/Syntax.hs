@@ -41,7 +41,7 @@ type DataCon = (String, [DataType])
     Represents data type definitions in our language model.
 -}
 
-data DataType = DataType String [String] [DataCon] LHE.DataOrNew (Maybe LHE.Context) [LHE.Deriving] deriving (Show, Eq)
+data DataType = DataType String [String] [DataCon] (Maybe LHE.Context) [LHE.Deriving] deriving (Show, Eq)
 
 {-|
     Represents expressions in our language model.
@@ -120,8 +120,8 @@ rebuildDataCons = map rebuildDataCon
 -}
 
 rebuildDataCon :: DataType -> LHE.Decl
-rebuildDataCon (DataType name vars cons don (Just context) derive) = LHE.DataDecl (LHE.SrcLoc "" 0 0) don context (LHE.Ident name) (map (LHE.UnkindedVar . LHE.Ident) vars) (rebuildConDecls cons) derive
-rebuildDataCon (DataType name vars cons don Nothing derive) = LHE.DataDecl (LHE.SrcLoc "" 0 0) don [] (LHE.Ident name) (map (LHE.UnkindedVar . LHE.Ident) vars) (rebuildConDecls cons) derive
+rebuildDataCon (DataType name vars cons (Just context) derive) = LHE.DataDecl (LHE.SrcLoc "" 0 0) LHE.DataType context (LHE.Ident name) (map (LHE.UnkindedVar . LHE.Ident) vars) (rebuildConDecls cons) derive
+rebuildDataCon (DataType name vars cons Nothing derive) = LHE.DataDecl (LHE.SrcLoc "" 0 0) LHE.DataType [] (LHE.Ident name) (map (LHE.UnkindedVar . LHE.Ident) vars) (rebuildConDecls cons) derive
 
 {-|
     Rebuilds a set of 'DataCon' into a set of 'LHE.QualConDecl' for pretty printing.
@@ -149,9 +149,9 @@ rebuildBangTypes = map rebuildBangType
 -}
 
 rebuildBangType :: DataType -> LHE.BangType
-rebuildBangType (DataType name [] _ _ _ _) = LHE.UnBangedTy (LHE.TyVar (LHE.Ident name))
-rebuildBangType (DataType cname (vname:[]) _ _ _ _) = LHE.UnBangedTy (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident cname))) (LHE.TyVar (LHE.Ident vname)))
-rebuildBangType (DataType cname (vname:vname':[]) _ _ _ _) = LHE.UnBangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident cname))) (LHE.TyVar (LHE.Ident vname))) (LHE.TyVar (LHE.Ident vname')))
+rebuildBangType (DataType name [] _ _ _) = LHE.UnBangedTy (LHE.TyVar (LHE.Ident name))
+rebuildBangType (DataType cname (vname:[]) _ _ _) = LHE.UnBangedTy (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident cname))) (LHE.TyVar (LHE.Ident vname)))
+rebuildBangType (DataType cname (vname:vname':[]) _ _ _) = LHE.UnBangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident cname))) (LHE.TyVar (LHE.Ident vname))) (LHE.TyVar (LHE.Ident vname')))
 rebuildBangType _ = error "Attempting to rebuild malformed data type."
 
 {-|

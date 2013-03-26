@@ -8,7 +8,7 @@ import qualified Language.Haskell.Exts as LHE
 testParseDataCon = [(makeDataType' "List" ["a"] [("Nil", []), ("Cons", [makeDataType "a" [], makeDataType "List" ["a"]])]) ~=? (parseDataCon (makeDataDecl "List" ["a"] [LHE.ConDecl (LHE.Ident "Nil") [], LHE.ConDecl (LHE.Ident "Cons") [(LHE.BangedTy (LHE.TyVar (LHE.Ident "a"))), (LHE.BangedTy (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "List"))) (LHE.TyVar (LHE.Ident "a"))))]])),
                     (makeDataType' "Tree" ["a", "b"] [("Leaf", [makeDataType "a" []]), ("Leaf'", [makeDataType "b" []]), ("Node", [makeDataType "Tree" ["a", "b"], makeDataType "Tree" ["a", "b"]])]) ~=? (parseDataCon (makeDataDecl "Tree" ["a", "b"] [LHE.ConDecl (LHE.Ident "Leaf") [LHE.BangedTy (LHE.TyVar (LHE.Ident "a"))], LHE.ConDecl (LHE.Ident "Leaf'") [LHE.BangedTy (LHE.TyVar (LHE.Ident "b"))], LHE.ConDecl (LHE.Ident "Node") [(LHE.BangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Tree"))) (LHE.TyVar (LHE.Ident "a"))) (LHE.TyVar (LHE.Ident "b")))), (LHE.BangedTy (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Tree"))) (LHE.TyVar (LHE.Ident "a"))) (LHE.TyVar (LHE.Ident "b"))))]]))]
 
-makeDataType' n tyv dcs = DataType n tyv dcs LHE.DataType (Just []) []
+makeDataType' n tyv dcs = DataType n tyv dcs (Just []) []
 
 makeDataDecl n tyv cdls = LHE.DataDecl (LHE.SrcLoc "" 0 0) LHE.DataType [] (LHE.Ident n) (map (LHE.UnkindedVar . LHE.Ident) tyv) (map makeQualConDecl cdls) []
 
@@ -49,7 +49,7 @@ testParseType = [(makeDataType "Expr" []) ~=? (parseType (LHE.TyVar (LHE.Ident "
                  (makeDataType "Expr" ["a", "b"]) ~=? (parseType (LHE.TyApp (LHE.TyApp (LHE.TyCon (LHE.UnQual (LHE.Ident "Expr"))) (LHE.TyVar (LHE.Ident "a"))) (LHE.TyVar (LHE.Ident "b")))),
                  (makeDataType "Expr" []) ~=? (parseType (LHE.TyParen (LHE.TyVar (LHE.Ident "Expr"))))]
 
-makeDataType n v = DataType n v [] LHE.DataType Nothing []
+makeDataType n v = DataType n v [] Nothing []
 
 testHsDeclIsFunc = [True ~=? (hsDeclIsFunc (LHE.PatBind (LHE.SrcLoc "" 0 0) (LHE.PVar (LHE.Ident "f")) Nothing (LHE.UnGuardedRhs (makeVar "v")) (LHE.BDecls []))),
                     True ~=? (hsDeclIsFunc (LHE.FunBind [LHE.Match (LHE.SrcLoc "" 0 0) (LHE.Ident "f") [] Nothing (LHE.UnGuardedRhs (makeVar "v")) (LHE.BDecls [])])),
