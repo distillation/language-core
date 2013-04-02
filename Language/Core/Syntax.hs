@@ -192,8 +192,10 @@ rebuildExp (Con c es) =
         cons = LHE.Con (LHE.UnQual (LHE.Ident c))
         args = map rebuildExp es
     in foldl LHE.App cons args
+rebuildExp (Apply (Apply (Free f) x) y)
+ | f `elem` ["par", "pseq", "div", "mod", "elem"] = LHE.InfixApp (LHE.Paren (rebuildExp x)) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (LHE.Paren (rebuildExp y))
 rebuildExp (Apply (Apply (Fun f) x) y)
- | f `elem` ["par", "pseq"] = LHE.InfixApp (LHE.Paren (rebuildExp x)) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (LHE.Paren (rebuildExp y))
+ | f `elem` ["par", "pseq", "div", "mod", "elem"] = LHE.InfixApp (LHE.Paren (rebuildExp x)) (LHE.QVarOp (LHE.UnQual (LHE.Ident f))) (LHE.Paren (rebuildExp y))
 rebuildExp (Apply e e') = LHE.App (rebuildExp e) (rebuildExp e')
 rebuildExp (Case e bs) = LHE.Case (rebuildExp e) (rebuildAlts bs)
 rebuildExp (Where e bs) 
