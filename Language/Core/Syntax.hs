@@ -202,12 +202,12 @@ rebuildExp (Where e bs)
  | length bs == 0 = rebuildExp e
  | otherwise = LHE.Let (LHE.BDecls (rebuildDecls bs)) (rebuildExp e)
 rebuildExp (Bound i) = LHE.Var (LHE.UnQual (LHE.Ident (show i)))
-rebuildExp (Tuple es) = LHE.Tuple (map rebuildExp es)
+rebuildExp (Tuple es) = LHE.Tuple LHE.Unboxed (map rebuildExp es)
 rebuildExp (TupleLet xs e e') = 
     let fv = foldr (\x fv' -> rename fv' x:fv') (free e) xs
         args = take (length xs) fv
         pVars = map (\v -> LHE.PVar (LHE.Ident v)) args
-    in LHE.Let (LHE.BDecls [LHE.PatBind (LHE.SrcLoc "" 0 0) (LHE.PTuple pVars) Nothing (LHE.UnGuardedRhs (rebuildExp e)) (LHE.BDecls [])]) (rebuildExp (foldr (\x t -> subst 0 (Free x) t) e' args))
+    in LHE.Let (LHE.BDecls [LHE.PatBind (LHE.SrcLoc "" 0 0) (LHE.PTuple LHE.Boxed pVars) Nothing (LHE.UnGuardedRhs (rebuildExp e)) (LHE.BDecls [])]) (rebuildExp (foldr (\x t -> subst 0 (Free x) t) e' args))
 
 {-|
     Rebuilds a 'Term' into a 'LHE.Int'.

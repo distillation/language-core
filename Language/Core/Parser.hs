@@ -363,7 +363,7 @@ parseExp (LHE.Case e alts) = Case (parseExp e) (parseAlts alts)
 parseExp (LHE.List es) = parseList es
 parseExp (LHE.Paren e) = parseExp e
 parseExp (LHE.If c t e) = Case (parseExp c) [Branch "True" [] (parseExp t), Branch "False" [] (parseExp e)]
-parseExp (LHE.Let (LHE.BDecls [LHE.PatBind _ (LHE.PTuple pats) _ rhs (LHE.BDecls bs)]) e) =
+parseExp (LHE.Let (LHE.BDecls [LHE.PatBind _ (LHE.PTuple _ pats) _ rhs (LHE.BDecls bs)]) e) =
     let pVars = map (\(LHE.PVar (LHE.Ident v)) -> v) pats
         bindings = parseDecls bs
         body = foldl (\e' v -> abstract 0 v e') (parseExp e) pVars
@@ -375,7 +375,7 @@ parseExp (LHE.Let (LHE.BDecls bs) e) =
     let bindings = parseDecls bs
         body = parseExp e
     in foldl (\f' (v, f) -> Let v f (abstract 0 v f')) body bindings
-parseExp (LHE.Tuple es) = Tuple (map parseExp es)
+parseExp (LHE.Tuple _ es) = Tuple (map parseExp es)
 parseExp e = error $ "Unallowed expression type: " ++ show e
 
 {-|
