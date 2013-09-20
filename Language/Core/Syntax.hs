@@ -202,7 +202,7 @@ rebuildExp (Where e bs)
  | length bs == 0 = rebuildExp e
  | otherwise = LHE.Let (LHE.BDecls (rebuildDecls bs)) (rebuildExp e)
 rebuildExp (Bound i) = LHE.Var (LHE.UnQual (LHE.Ident (show i)))
-rebuildExp (Tuple es) = LHE.Tuple LHE.Unboxed (map rebuildExp es)
+rebuildExp (Tuple es) = LHE.Tuple LHE.Boxed (map rebuildExp es)
 rebuildExp (TupleLet xs e e') = 
     let fv = foldr (\x fv' -> rename fv' x:fv') (free e) xs
         args = take (length xs) fv
