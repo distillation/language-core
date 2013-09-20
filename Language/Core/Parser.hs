@@ -142,6 +142,8 @@ parseBangType (LHE.UnpackedTy t) = error ("Types with the UNPACK directive are n
     Parses a 'LHE.Type' into a 'DataType'
     
     Currently supports:
+
+    * 'LHE.TyCon' - Containing a straight forward type-name, e.g. "Int"
     
     * 'LHE.TyVar' - Straight forward type variables.
     
@@ -153,6 +155,7 @@ parseBangType (LHE.UnpackedTy t) = error ("Types with the UNPACK directive are n
 -}
 
 parseType :: LHE.Type -> DataType
+parseType (LHE.TyCon (LHE.UnQual (LHE.Ident v))) = DataType v [] [] Nothing []
 parseType (LHE.TyVar v) = DataType (parseName v) [] [] Nothing []
 parseType (LHE.TyApp (LHE.TyCon v) (LHE.TyVar v')) = DataType (parseQName v) [parseName v'] [] Nothing []
 parseType (LHE.TyApp (LHE.TyApp (LHE.TyCon v) (LHE.TyVar v')) (LHE.TyVar v'')) = DataType (parseQName v) [parseName v', parseName v''] [] Nothing []
