@@ -12,15 +12,7 @@ module Language.Core(
     Term(Free, Lambda, Let, Fun, Con, Apply, Case, Bound, Where, Tuple, TupleLet),
     Branch(Branch),
     DataType(DataType),
-    parseFile,
-    free,
-    bound,
-    funs,
-    abstract,
-    subst,
-    shift,
-    rename,
-    match
+    parseFile
 ) where
 
 import Language.Core.Parser
