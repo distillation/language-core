@@ -1,0 +1,6 @@
+paralleliser
+=======
+
+Transformer which adds the ability to automatically parallelise distilled functions.
+
+Given a program, adds in the necessary partitioning functions and parallelises distilled functions.
